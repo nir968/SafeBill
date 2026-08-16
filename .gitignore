@@ -1,0 +1,29 @@
+# Security / Secrets (CRITICAL)
+.env
+.env.*
+
+# Python Cache and Virtual Environments
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.pytest_cache/
+
+# Docker and Databases
+docker-compose.override.yml
+pgdata/
+redis_data/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+
+GEMINI_API_KEY=AQ.Ab8RN6JbKuT0joYHdAfd12Cfk2bCReT6UOSxoCmkxz6AazjFNg
+GEMINI_MODEL=gemini-3.6-flash
+#password=0U1zs37
+TELEGRAM_BOT_TOKEN=8933038737:AAHUcs7Zmq0n0o1O1r0_OfoJvre1A8s5F0U

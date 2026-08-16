@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>לוח הבקרה - SafeBill</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <header class="bg-white border-b border-slate-200">
+        <div class="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
+            <span class="text-2xl">🧾</span>
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">SafeBill</h1>
+                <p class="text-sm text-slate-500">לוח הבקרה שלך</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-8 space-y-8">
+
+        <section>
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">סיכום</h2>
+
+            {% if pending_by_currency %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <p class="text-sm text-slate-500">חשבוניות ממתינות לתשלום</p>
+                    <p class="mt-2 text-3xl font-bold text-slate-900">{{ pending_count }}</p>
+                </div>
+                {% for row in pending_by_currency %}
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <p class="text-sm text-slate-500">
+                        סך הכל ממתין
+                        {% if pending_by_currency|length > 1 %}({{ row.currency }}){% endif %}
+                    </p>
+                    <p class="mt-2 text-3xl font-bold text-amber-600">
+                        {{ row.total|money(row.currency) }}
+                    </p>
+                    <p class="mt-1 text-xs text-slate-400">{{ row.count }} חשבוניות</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+                <p class="text-4xl mb-2">✅</p>
+                <p class="text-slate-600 font-medium">הכל שולם! אין חשבוניות ממתינות.</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">חשבוניות אחרונות</h2>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                {% if bills %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">מוסד</th>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">סכום</th>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">תאריך יעד</th>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">סטטוס</th>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">קטגוריה</th>
+                                <th class="px-4 py-3 text-start font-semibold text-slate-600">אסמכתא</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for bill in bills %}
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{{ bill.institution }}</td>
+                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">{{ bill.amount|money(bill.currency) }}</td>
+                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
+                                    {% if bill.due_date %}
+                                        {{ bill.due_date.strftime('%d/%m/%Y') }}
+                                    {% else %}
+                                        <span class="text-slate-400">לא ידוע</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    {% if bill.status == "paid" %}
+                                        <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-medium">שולם</span>
+                                    {% elif bill.status == "analyzed" %}
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2.5 py-1 text-xs font-medium">פתוח</span>
+                                    {% else %}
+                                        <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-2.5 py-1 text-xs font-medium">בעיבוד</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
+                                    {% if bill.category %}
+                                        {{ bill.category }}
+                                    {% else %}
+                                        <span class="text-slate-400">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
+                                    {% if bill.asmachta %}
+                                        {{ bill.asmachta }}
+                                    {% else %}
+                                        <span class="text-slate-400">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-8 text-center">
+                    <p class="text-4xl mb-2">🧾</p>
+                    <p class="text-slate-600 font-medium">עדיין אין חשבוניות שמורות.</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Chat widget: floating bubble + panel, wired to POST /api/chat.
+         "Real-time" here means a normal fetch()-based request/response
+         exchange rendered smoothly into the message list, not literal
+         streaming - the backend returns one full reply per message after
+         its tool-use loop completes, not a token stream. -->
+    <div class="fixed bottom-6 start-6 z-50">
+        <button
+            id="chat-toggle"
+            type="button"
+            aria-label="פתח צ'אט עם סוכן SafeBill"
+            class="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg flex items-center justify-center text-2xl transition"
+        >
+            💬
+        </button>
+    </div>
+
+    <div
+        id="chat-panel"
+        class="fixed bottom-24 start-6 z-50 hidden w-80 sm:w-96 h-[28rem] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden"
+    >
+        <div class="bg-indigo-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <div>
+                <p class="font-semibold">סוכן SafeBill</p>
+                <p class="text-xs text-indigo-100">שאל אותי על החשבוניות שלך</p>
+            </div>
+            <button id="chat-close" type="button" aria-label="סגור" class="text-indigo-100 hover:text-white text-xl leading-none">×</button>
+        </div>
+
+        <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50">
+            <div class="flex justify-start">
+                <div class="max-w-[85%] rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                    היי! אפשר לשאול אותי כמה נשאר לך לשלם, לחפש חשבונית לפי מוסד או קטגוריה, ועוד. איך אפשר לעזור?
+                </div>
+            </div>
+        </div>
+
+        <form id="chat-form" class="border-t border-slate-200 p-3 flex gap-2 flex-shrink-0">
+            <input
+                id="chat-input"
+                type="text"
+                placeholder="שאל שאלה..."
+                autocomplete="off"
+                class="flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+            <button
+                id="chat-submit"
+                type="submit"
+                aria-label="שלח"
+                class="w-10 h-10 flex-shrink-0 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition disabled:opacity-50"
+            >
+                ➤
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const SAFEBILL_USER_ID = {{ user_id }};
+        const CHAT_ENDPOINT = "/api/chat";
+
+        const chatToggle = document.getElementById('chat-toggle');
+        const chatPanel = document.getElementById('chat-panel');
+        const chatClose = document.getElementById('chat-close');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const chatSubmit = document.getElementById('chat-submit');
+        const chatMessages = document.getElementById('chat-messages');
+
+        chatToggle.addEventListener('click', () => {
+            chatPanel.classList.toggle('hidden');
+            if (!chatPanel.classList.contains('hidden')) chatInput.focus();
+        });
+        chatClose.addEventListener('click', () => chatPanel.classList.add('hidden'));
+
+        function appendMessage(text, sender) {
+            const row = document.createElement('div');
+            // "start" (right, in this RTL page) for the user's own
+            // messages, "end" (left) for the agent - matching common
+            // Hebrew chat-app convention of keeping your own messages on
+            // the right regardless of the agent's replies.
+            row.className = sender === 'user' ? 'flex justify-start' : 'flex justify-end';
+
+            const bubble = document.createElement('div');
+            bubble.className = sender === 'user'
+                ? 'max-w-[85%] rounded-2xl bg-indigo-600 text-white px-3 py-2 text-sm'
+                : 'max-w-[85%] rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700';
+            // textContent, never innerHTML: the agent's reply is
+            // LLM-generated text rendered straight into the DOM. innerHTML
+            // here would be a real XSS opening if that text ever
+            // contained markup; textContent escapes it unconditionally.
+            bubble.textContent = text;
+
+            row.appendChild(bubble);
+            chatMessages.appendChild(row);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function setTyping(visible) {
+            let indicator = document.getElementById('chat-typing');
+            if (visible) {
+                if (indicator) return;
+                indicator = document.createElement('div');
+                indicator.id = 'chat-typing';
+                indicator.className = 'flex justify-end';
+                const bubble = document.createElement('div');
+                bubble.className = 'rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-400';
+                bubble.textContent = 'כותב...';
+                indicator.appendChild(bubble);
+                chatMessages.appendChild(indicator);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } else if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        let isSending = false;
+
+        chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (isSending) return;
+
+            const text = chatInput.value.trim();
+            if (!text) return;
+
+            isSending = true;
+            chatInput.disabled = true;
+            chatSubmit.disabled = true;
+            appendMessage(text, 'user');
+            chatInput.value = '';
+            setTyping(true);
+
+            try {
+                const response = await fetch(CHAT_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: SAFEBILL_USER_ID, message: text }),
+                });
+
+                if (!response.ok) {
+                    let detail = 'שגיאה בתקשורת עם הסוכן.';
+                    try {
+                        const errBody = await response.json();
+                        detail = errBody.detail || detail;
+                    } catch (parseError) {
+                        // body wasn't JSON - keep the generic message
+                    }
+                    appendMessage(detail, 'agent');
+                } else {
+                    const data = await response.json();
+                    appendMessage(data.reply || 'מצטער, לא הצלחתי לענות על זה.', 'agent');
+                }
+            } catch (networkError) {
+                appendMessage('לא הצלחתי להתחבר לשרת.', 'agent');
+            } finally {
+                setTyping(false);
+                isSending = false;
+                chatInput.disabled = false;
+                chatSubmit.disabled = false;
+                chatInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>

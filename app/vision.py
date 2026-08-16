@@ -1,0 +1,421 @@
+import asyncio
+import base64
+import io
+import json
+import logging
+from abc import ABC, abstractmethod
+from datetime import date
+from decimal import Decimal
+from typing import Literal
+import anthropic
+import httpx
+import pypdfium2 as pdfium
+from google import genai
+from google.genai import errors as genai_errors
+from pydantic import BaseModel, ValidationError
+from app.config import settings
+
+
+
+logger = logging.getLogger("safebill.vision")
+
+
+class VisionExtractionError(Exception):
+    """Base class for Sanitizer extraction failures."""
+
+
+class BillValidationError(VisionExtractionError):
+    """The image is not a legible bill: wrong document type, too degraded to
+    read, or (Ollama/Gemini) a provider response that didn't parse into our
+    schema at all."""
+
+
+class VisionProviderError(VisionExtractionError):
+    """The vision provider call itself failed (network, auth, rate limit, server error)."""
+
+
+_IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def _sniff_image_media_type(image_bytes: bytes) -> str:
+    """Fast, cheap rejection of non-image uploads before ever paying for a
+    model call. Distinct from `document_type` below, which is the model's
+    job: "this is a JPEG, but it's a photo of a cat, not a bill." """
+    if image_bytes[:12].startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    for signature, media_type in _IMAGE_SIGNATURES:
+        if image_bytes.startswith(signature):
+            return media_type
+    raise BillValidationError("Unrecognized image format - expected JPEG, PNG, GIF, or WebP")
+
+
+_PDF_SIGNATURE = b"%PDF-"
+
+
+def _is_pdf(data: bytes) -> bool:
+    return data.startswith(_PDF_SIGNATURE)
+
+
+def _rasterize_pdf_first_page(pdf_bytes: bytes) -> bytes:
+    """Renders page 1 of a PDF to PNG bytes. Bills are almost always a
+    single page, so only the first page is processed - a multi-page PDF
+    silently has everything past page 1 ignored, not an error.
+
+    This is a CPU-bound, blocking call (PDFium is a native renderer, not
+    I/O) - always run it via asyncio.to_thread, never awaited inline, or
+    it blocks the event loop for every other in-flight request for the
+    duration of the render.
+
+    Converting here, at the VisionSanitizerService layer, rather than
+    inside each adapter, is what makes PDF support work uniformly across
+    all three VisionProvider backends without touching any of them -
+    Ollama's local vision models in particular have no PDF understanding
+    at all, so by the time any adapter sees these bytes, it's always a
+    plain PNG image exactly like a photo upload.
+    """
+    document = None
+    page = None
+    try:
+        document = pdfium.PdfDocument(pdf_bytes)
+        page = document.get_page(0)
+        bitmap = page.render(scale=200 / 72)  # ~200 DPI
+        pil_image = bitmap.to_pil()
+        buffer = io.BytesIO()
+        pil_image.save(buffer, format="PNG")
+        return buffer.getvalue()
+    except (pdfium.PdfiumError, IndexError, OSError) as exc:
+        raise BillValidationError(
+            "Could not read the uploaded PDF - it may be corrupt, encrypted, or empty"
+        ) from exc
+    finally:
+        if page is not None:
+            page.close()
+        if document is not None:
+            document.close()
+
+
+_FIXED_EXPENSE_CATEGORY = "הוצאה קבועה"
+_VARIABLE_EXPENSE_CATEGORY = "הוצאה משתנה"
+_FINE_CATEGORY = "קנס/דוח"
+# Single source of truth for both the prompt text below and the
+# defensive validation in VisionSanitizerService - the two can't drift
+# out of sync with each other.
+_ALLOWED_CATEGORIES = {_FIXED_EXPENSE_CATEGORY, _VARIABLE_EXPENSE_CATEGORY, _FINE_CATEGORY}
+
+
+_SYSTEM_PROMPT = f"""You are an expert financial-document data-extraction system. You are shown a single image and must extract structured bill data from it - nothing else.
+
+Rules:
+- Extract only what is visible in the image. Never guess, infer, or fabricate a value.
+- "institution" is the biller issuing the bill (the utility, bank, or service provider) - not the recipient.
+- "amount" is the total amount due, as a plain number with no currency symbol or thousands separator.
+- "currency" is the ISO 4217 three-letter currency code for the amount (e.g. "ILS", "USD", "EUR", "GBP"). Infer it from any symbol or code shown on the bill: ₪ -> ILS, $ -> USD, € -> EUR, £ -> GBP. If a symbol could mean more than one currency and no other context narrows it down, use the most common association (e.g. plain "$" -> USD). If no currency is shown anywhere on the bill, use "ILS".
+- "category" classifies what the bill is for, as exactly one of these three Hebrew labels:
+  - "{_FIXED_EXPENSE_CATEGORY}" (fixed/recurring expense): utilities (electricity, water, gas), municipal taxes, internet/phone/TV subscriptions, insurance premiums, rent, loan or mortgage payments.
+  - "{_VARIABLE_EXPENSE_CATEGORY}" (variable/discretionary expense): supermarkets, retail stores, restaurants, cafes, one-off purchases.
+  - "{_FINE_CATEGORY}" (fine/ticket): parking tickets, speeding or traffic tickets, police reports, other government-issued penalties.
+  If the bill doesn't clearly fit any of the three, or you are not confident, return null rather than guessing.
+- "due_date" is the payment due date in YYYY-MM-DD format. If no due date is visible, return null - never invent one or substitute today's date.
+- Set "document_type" to "bill" only when the image clearly shows a bill, invoice, or statement with an amount owed.
+- Set "document_type" to "not_a_bill" when the image shows something else entirely.
+- Set "document_type" to "illegible" when the image is a bill but too blurry, dark, cropped, or degraded to read reliably.
+- When document_type is not "bill", set institution, amount, currency, category, and due_date to null."""
+
+
+class ExtractedBill(BaseModel):
+    institution: str
+    amount: Decimal
+    currency: str
+    category: str | None
+    due_date: date | None
+
+
+class _BillExtractionResult(BaseModel):
+    """Wire schema every provider must produce. `document_type` is the
+    discriminator that lets the shared post-processing step fail fast on
+    bad images without any adapter needing to know about the others.
+
+    `category` is typed as a plain `str | None`, not `Literal[*_ALLOWED_
+    CATEGORIES] | None`, even though only three values are ever valid -
+    see VisionSanitizerService.extract_bill_fields for why: a Literal
+    would make Ollama (no server-side schema enforcement, unlike
+    Anthropic/Gemini) hard-fail the *entire* extraction over a bad
+    category guess. Validating here instead of via the type system keeps
+    a categorization miss a soft failure (category=None) uniformly
+    across all three providers, rather than a hard one on just one of them.
+    """
+
+    document_type: Literal["bill", "not_a_bill", "illegible"]
+    institution: str | None
+    amount: float | None
+    currency: str | None
+    category: str | None
+    due_date: str | None
+
+
+class VisionProvider(ABC):
+    """Adapter interface. Every backend - hosted API or local model - must
+    implement exactly this: image bytes in, our schema out. Nothing about
+    the caller (VisionSanitizerService, and the router above it) knows or
+    cares which concrete adapter is behind this."""
+
+    @abstractmethod
+    async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult: ...
+
+
+class AnthropicVisionProvider(VisionProvider):
+    """
+    Hosted adapter. Calls the Claude Messages API with structured outputs,
+    so the response is guaranteed to match `_BillExtractionResult` - no
+    markdown fencing, no conversational text, no manual JSON parsing.
+
+    Privacy note: this calls Anthropic's standard hosted API. The "no PII
+    saved" claim in this project's design is about SafeBill's own
+    infrastructure - it does NOT by itself cover the provider's data
+    handling. For a real zero-retention claim, either negotiate a
+    zero-data-retention (ZDR) agreement, or run with VISION_PROVIDER=ollama
+    so the image never leaves this host at all.
+    """
+
+    _MODEL = "claude-sonnet-5"
+
+    def __init__(self) -> None:
+        # Zero-arg client: resolves ANTHROPIC_API_KEY (or an `ant auth
+        # login` profile) from the environment. Never hardcode a key here.
+        self._client = anthropic.AsyncAnthropic()
+
+    async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult:
+        media_type = _sniff_image_media_type(image_bytes)
+
+        base64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+        # Only needed to build the payload above - drop the raw copy before
+        # the network round trip rather than holding it for the call's
+        # duration.
+        del image_bytes
+
+        try:
+            response = await self._client.messages.parse(
+                model=self._MODEL,
+                max_tokens=1024,
+                system=_SYSTEM_PROMPT,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": base64_data,
+                                },
+                            },
+                            {"type": "text", "text": "Extract the bill fields from this image."},
+                        ],
+                    }
+                ],
+                output_format=_BillExtractionResult,
+            )
+        except anthropic.APIConnectionError as exc:
+            raise VisionProviderError("Could not reach the vision provider") from exc
+        except anthropic.RateLimitError as exc:
+            raise VisionProviderError("Vision provider rate limit exceeded") from exc
+        except anthropic.APIStatusError as exc:
+            raise VisionProviderError(f"Vision provider returned HTTP {exc.status_code}") from exc
+        finally:
+            del base64_data
+
+        return response.parsed_output
+
+
+class OllamaVisionProvider(VisionProvider):
+    """
+    Local adapter - the strongest privacy story available: the image never
+    leaves this host. Trades the hosted providers' server-side schema
+    guarantee for a self-hosted model plus a validate-then-reject step,
+    since Ollama's `format="json"` only guarantees syntactically valid
+    JSON, not that it matches our schema.
+    """
+
+    def __init__(self, base_url: str, model: str) -> None:
+        self._model = model
+        self._client = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"), timeout=httpx.Timeout(60.0, connect=5.0)
+        )
+
+    async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult:
+        base64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+        del image_bytes
+
+        try:
+            try:
+                http_response = await self._client.post(
+                    "/api/generate",
+                    json={
+                        "model": self._model,
+                        "prompt": (
+                            f"{_SYSTEM_PROMPT}\n\n"
+                            "Respond with a single JSON object matching exactly this schema "
+                            f"and no other text: {json.dumps(_BillExtractionResult.model_json_schema())}"
+                        ),
+                        "images": [base64_data],
+                        "format": "json",
+                        "stream": False,
+                    },
+                )
+            except httpx.RequestError as exc:
+                raise VisionProviderError(f"Could not reach Ollama at {self._client.base_url}") from exc
+
+            if http_response.status_code != 200:
+                raise VisionProviderError(
+                    f"Ollama returned HTTP {http_response.status_code}: {http_response.text[:200]}"
+                )
+
+            try:
+                raw_text = http_response.json()["response"]
+                payload = json.loads(raw_text)
+                return _BillExtractionResult.model_validate(payload)
+            except (KeyError, json.JSONDecodeError, ValidationError) as exc:
+                raise BillValidationError(
+                    "Local vision model did not return a parseable bill extraction"
+                ) from exc
+        finally:
+            del base64_data
+
+
+class GeminiVisionProvider(VisionProvider):
+    """
+    Hosted adapter for Google Gemini, via the Interactions API (GA since
+    2026-06-22 on `google-genai>=2.3.0`).
+
+    Third model/API surface change in a row here, for the record:
+    `google-generativeai` -> `google-genai`'s `generate_content` ->
+    `google-genai`'s `interactions.create`. `generate_content` still works
+    but is now the legacy surface - new capabilities land on Interactions
+    first, and Google has been pulling flash-tier models (2.5-flash
+    included) out from under new projects ahead of their posted shutdown
+    dates. The model ID is a Settings field, not a constant, specifically
+    because of that pattern - expect to need to bump it again without
+    a code change.
+
+    Privacy note: same caveat as AnthropicVisionProvider - this is a
+    hosted API call, not a zero-retention guarantee by itself.
+    """
+
+    def __init__(self, model: str) -> None:
+        self._model = model
+        # Zero-arg client: resolves GEMINI_API_KEY (or GOOGLE_API_KEY) from
+        # the environment. Never hardcode a key here.
+        self._client = genai.Client()
+
+    async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult:
+        media_type = _sniff_image_media_type(image_bytes)
+
+        base64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+        # Only needed to build the payload above - drop the raw copy before
+        # the network round trip rather than holding it for the call's
+        # duration.
+        del image_bytes
+
+        try:
+            interaction = await self._client.aio.interactions.create(
+                model=self._model,
+                input=[
+                    {
+                        "type": "text",
+                        "text": f"{_SYSTEM_PROMPT}\n\nExtract the bill fields from this image.",
+                    },
+                    {"type": "image", "data": base64_data, "mime_type": media_type},
+                ],
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": _BillExtractionResult.model_json_schema(),
+                },
+            )
+        except genai_errors.ClientError as exc:
+            raise VisionProviderError(f"Gemini rejected the request: {exc}") from exc
+        except genai_errors.ServerError as exc:
+            raise VisionProviderError(f"Gemini server error: {exc}") from exc
+        except genai_errors.APIError as exc:
+            raise VisionProviderError(f"Gemini API error: {exc}") from exc
+        finally:
+            del base64_data
+
+        try:
+            payload = json.loads(interaction.output_text)
+            return _BillExtractionResult.model_validate(payload)
+        except (ValueError, json.JSONDecodeError, ValidationError) as exc:
+            # ValueError also covers `.output_text` raising when the
+            # interaction has no valid final output (e.g. safety-blocked
+            # content) - treated the same as "didn't return a usable
+            # extraction" rather than a provider-level failure.
+            raise BillValidationError("Gemini did not return a parseable bill extraction") from exc
+
+
+class VisionSanitizerService:
+    """
+    Provider-agnostic facade the rest of the app talks to (the Sanitizer
+    router only ever imports `vision_client` from here). Owns the two
+    pieces of behavior that must be identical no matter which adapter is
+    selected: normalizing a PDF upload down to a plain image before any
+    adapter ever sees it, and turning a raw `_BillExtractionResult` into
+    either a validated `ExtractedBill` or a `BillValidationError`.
+    """
+
+    def __init__(self, provider: VisionProvider) -> None:
+        self._provider = provider
+
+    async def extract_bill_fields(self, image_bytes: bytes) -> ExtractedBill:
+        if _is_pdf(image_bytes):
+            image_bytes = await asyncio.to_thread(_rasterize_pdf_first_page, image_bytes)
+
+        result = await self._provider.extract_bill(image_bytes)
+
+        if result.document_type != "bill":
+            raise BillValidationError(f"Image rejected by vision model: {result.document_type}")
+        if result.institution is None or result.amount is None:
+            raise BillValidationError("Vision model returned an incomplete bill extraction")
+
+        # Defensive normalization, not just the prompt's "default to ILS"
+        # instruction: models occasionally return a symbol instead of a
+        # code, lowercase, or nothing at all despite the instruction, and
+        # this is the one place that has to guarantee a valid-shaped value
+        # regardless of which adapter produced it.
+        currency = (result.currency or "").strip().upper()
+        if len(currency) != 3 or not currency.isalpha():
+            currency = "ILS"
+
+        # Unlike currency, there's no safe universal default to fall back
+        # to here - forcing an uncertain bill into one of the three
+        # buckets would systematically bias the data, so an out-of-set or
+        # missing value just becomes None (a fully successful save, only
+        # without a category) rather than a guess or a failure.
+        category = result.category if result.category in _ALLOWED_CATEGORIES else None
+
+        return ExtractedBill(
+            institution=result.institution,
+            amount=Decimal(str(result.amount)),
+            currency=currency,
+            category=category,
+            due_date=date.fromisoformat(result.due_date) if result.due_date else None,
+        )
+
+
+def get_vision_provider() -> VisionProvider:
+    """Reads VISION_PROVIDER (via Settings) and returns the matching
+    adapter. This is the only place that needs to know all adapters
+    exist - swapping providers is a config change, not a code change."""
+    if settings.vision_provider == "ollama":
+        return OllamaVisionProvider(base_url=settings.ollama_base_url, model=settings.ollama_model)
+    if settings.vision_provider == "gemini":
+        return GeminiVisionProvider(model=settings.gemini_model)
+    return AnthropicVisionProvider()
+
+
+vision_client = VisionSanitizerService(get_vision_provider())

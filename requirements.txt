@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
+arq==0.26.1
+tenacity==9.0.0
+anthropic>=0.70.0
+httpx>=0.27.0
+google-genai>=2.3.0
+pypdfium2>=4.30.0
+Pillow>=10.0.0
+jinja2>=3.1.0

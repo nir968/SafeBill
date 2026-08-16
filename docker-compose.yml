@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: safebill
+      POSTGRES_PASSWORD: 0U1zs37
+      POSTGRES_DB: safebill
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safebill"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    environment:
+      DATABASE_URL: postgresql+asyncpg://safebill:0U1zs37@db:5432/safebill
+      REDIS_URL: redis://redis:6379/0
+      VISION_PROVIDER: gemini
+      # Set in a .env file next to this compose file, or export in the
+      # shell before `docker compose up` — never hardcode a real key here.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      VLM_TIMEOUT_SECONDS: 60
+    ports: 
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: arq app.worker.WorkerSettings
+    environment:
+      DATABASE_URL: postgresql+asyncpg://safebill:0U1zs37@db:5432/safebill
+      REDIS_URL: redis://redis:6379/0
+      VISION_PROVIDER: gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Only the worker (Enforcer + Analyst) sends Telegram alerts - the
+      # api process never needs this. Set in a .env file next to this
+      # compose file, or export in the shell before `docker compose up`.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
