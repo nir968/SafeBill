@@ -20,7 +20,7 @@ router = APIRouter(prefix="/bills", tags=["sanitizer"])
 # unavailable (see the `except Exception` branch in upload_bill below). Not
 # translated/configurable - it only ever appears in the dashboard until a
 # human corrects it, unlike every other user-facing string in this file.
-_UNEXTRACTED_INSTITUTION = "חשבונית לא זוהתה (נדרש עדכון ידני)"
+_UNEXTRACTED_INSTITUTION = "חשבון לא זוהה (נדרש עדכון ידני)"
 
 # Bounds total concurrent VLM calls in this process — the backpressure valve
 # that keeps a traffic burst from turning into N simultaneous image buffers.

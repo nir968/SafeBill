@@ -46,32 +46,33 @@ document.addEventListener('alpine:init', () => {
 
                 about_title: 'אודות SafeBill',
                 about_body:
-                    'SafeBill היא יוזמה חכמה לניהול חשבוניות, שפותחה כפרויקט מתקדם במדעי המחשב במכללה האקדמית למינהל (The College of Management Academic Studies). המערכת משלבת בינה מלאכותית לזיהוי וניתוח אוטומטי של חשבוניות, לצד מעקב תשלומים ותובנות פיננסיות אישיות.',
+                    'SafeBill היא יוזמה חכמה לניהול חשבונות, שפותחה כפרויקט מתקדם במדעי המחשב במכללה האקדמית למינהל (The College of Management Academic Studies). המערכת משלבת בינה מלאכותית לזיהוי וניתוח אוטומטי של חשבונות, לצד מעקב תשלומים ותובנות פיננסיות אישיות.',
                 privacy_title: 'פרטיות ואבטחה',
                 privacy_body_1:
-                    'תמונות וקבצי PDF של חשבוניות אינן נשמרות לצמיתות בשרתי המערכת בשום שלב - הן מעובדות בזיכרון בלבד לצורך חילוץ הנתונים, ונמחקות מיידית עם סיום התהליך. רק הנתונים המחולצים (שם ספק, סכום, תאריך וקטגוריה) נשמרים במסד הנתונים.',
+                    'תמונות וקבצי PDF של חשבונות אינן נשמרות לצמיתות בשרתי המערכת בשום שלב - הן מעובדות בזיכרון בלבד לצורך חילוץ הנתונים, ונמחקות מיידית עם סיום התהליך. רק הנתונים המחולצים (שם ספק, סכום, תאריך וקטגוריה) נשמרים במסד הנתונים.',
                 privacy_body_2:
                     'לצורך חילוץ הנתונים, התמונה מועברת פעם אחת למודל בינה מלאכותית לעיבוד - ואינה נשמרת על ידי המערכת בשום שלב, לפני, במהלך או אחרי העיבוד.',
                 close: 'סגור',
 
-                onboarding_step1_title: 'שלב 1: העלאת חשבוניות',
-                onboarding_step1_body: 'גררו תמונה או PDF של חשבונית לאזור ההעלאה, או צלמו אותה ישירות מהנייד.',
+                onboarding_step1_title: 'שלב 1: העלאת חשבונות',
+                onboarding_step1_body: 'גררו תמונה או PDF של חשבון לאזור ההעלאה, או צלמו אותו ישירות מהנייד.',
                 onboarding_step2_title: 'שלב 2: ניתוח חכם',
                 onboarding_step2_body:
                     'בינה מלאכותית מזהה את הפרטים אוטומטית - ותמיד אפשר לערוך ידנית אם משהו לא מדויק.',
                 onboarding_step3_title: 'שלב 3: מעקב ותשלום',
                 onboarding_step3_body:
-                    'כל החשבוניות שלכם במקום אחד, מסודרות לפי סטטוס, כדי שלא תפספסו תאריך תשלום.',
+                    'כל החשבונות שלכם במקום אחד, מסודרים לפי סטטוס, כדי שלא תפספסו תאריך תשלום.',
                 skip: 'דלג',
                 previous: 'הקודם',
                 next: 'הבא',
                 got_it: 'הבנתי',
 
-                upload_section_title: 'העלאת חשבונית חדשה',
-                upload_zone_aria: 'העלאת חשבונית - גררו קובץ, צלמו או לחצו לבחירה',
-                uploading_status: 'מעלה ומנתח את החשבונית...',
-                upload_success_saved: 'החשבונית נשמרה בהצלחה, מרענן...',
-                upload_partial_saved_title: 'החשבונית נשמרה',
+                upload_section_title: 'העלאת חשבון חדש',
+                upload_zone_aria: 'העלאת חשבון - גררו קובץ, צלמו או לחצו לבחירה',
+                uploading_status: 'מעלה קובץ...',
+                analyzing_status: 'מנתח מסמך...',
+                upload_success_saved: 'החשבון נשמר בהצלחה, מרענן...',
+                upload_partial_saved_title: 'החשבון נשמר',
                 upload_partial_saved_message: 'שירות הזיהוי האוטומטי אינו זמין כרגע - ניתן לעדכן את הפרטים ידנית מהטבלה',
                 refreshing: 'מרענן...',
                 try_again_hint: 'לחצו כדי לנסות שוב',
@@ -81,19 +82,19 @@ document.addEventListener('alpine:init', () => {
 
                 error_unsupported_file: 'סוג קובץ לא נתמך. יש להעלות PDF, PNG או JPG.',
                 error_file_too_large: 'הקובץ גדול מדי.',
-                error_duplicate_bill: 'החשבונית כבר קיימת במערכת.',
-                error_not_a_bill: 'לא הצלחתי לזהות את זה כחשבונית תקינה.',
-                error_scan_unavailable: 'לא ניתן להעלות חשבונית כעת, אפשר להוסיף את החשבונית באופן ידני.',
-                error_generic_save: 'הייתה בעיה בשמירת החשבונית.',
+                error_duplicate_bill: 'החשבון כבר קיים במערכת.',
+                error_not_a_bill: 'לא הצלחתי לזהות את זה כחשבון תקין.',
+                error_scan_unavailable: 'לא ניתן להעלות חשבון כעת, אפשר להוסיף את החשבון באופן ידני.',
+                error_generic_save: 'הייתה בעיה בשמירת החשבון.',
                 error_network: 'לא הצלחתי להתחבר לשרת.',
 
                 summary_title: 'סיכום',
-                pending_bills_count_label: 'חשבוניות ממתינות לתשלום',
+                pending_bills_count_label: 'חשבונות ממתינים לתשלום',
                 pending_total_label: 'סך הכל ממתין',
-                bills_count_suffix: 'חשבוניות',
-                all_paid_message: 'הכל שולם! אין חשבוניות ממתינות.',
+                bills_count_suffix: 'חשבונות',
+                all_paid_message: 'הכל שולם! אין חשבונות ממתינים.',
 
-                regular_bills_title: 'חשבוניות שוטפות',
+                regular_bills_title: 'חשבונות שוטפים',
                 tickets_title: 'דוחות וקנסות',
                 th_institution: 'מוסד',
                 th_amount: 'סכום',
@@ -108,9 +109,9 @@ document.addEventListener('alpine:init', () => {
                 status_analyzed: 'פתוח',
                 status_extraction_failed: 'נדרש עדכון ידני',
                 status_pending_analysis: 'בעיבוד',
-                edit_bill: 'עריכת חשבונית',
+                edit_bill: 'עריכת חשבון',
                 mark_paid_aria: 'סמן כשולם',
-                no_bills_saved: 'עדיין אין חשבוניות שמורות.',
+                no_bills_saved: 'עדיין אין חשבונות שמורים.',
                 no_tickets: 'אין דוחות או קנסות רשומים.',
 
                 // Category labels, keyed by the literal Hebrew string
@@ -129,7 +130,7 @@ document.addEventListener('alpine:init', () => {
                 'שירותים ומנויים': 'שירותים ומנויים',
                 'הוצאה כללית': 'הוצאה כללית',
 
-                add_bill_title: 'הוספת חשבונית חדשה',
+                add_bill_title: 'הוספת חשבון חדש',
                 field_currency: 'מטבע',
                 cancel: 'ביטול',
                 save: 'שמירה',
@@ -137,19 +138,19 @@ document.addEventListener('alpine:init', () => {
                 add: 'הוספה',
                 delete: 'מחק',
                 deleting: 'מוחק...',
-                delete_confirm: 'למחוק לצמיתות את החשבונית מ"{institution}"?',
+                delete_confirm: 'למחוק לצמיתות את החשבון מ"{institution}"?',
                 error_institution_required: 'יש להזין שם מוסד.',
                 error_amount_positive: 'הסכום חייב להיות גדול מאפס.',
                 error_save_failed: 'שמירת השינויים נכשלה.',
-                error_create_failed: 'הוספת החשבונית נכשלה.',
-                error_delete_failed: 'מחיקת החשבונית נכשלה.',
-                error_pay_failed: 'סימון החשבונית כשולמה נכשל.',
+                error_create_failed: 'הוספת החשבון נכשלה.',
+                error_delete_failed: 'מחיקת החשבון נכשלה.',
+                error_pay_failed: 'סימון החשבון כשולם נכשל.',
 
                 chat_agent_name: 'סוכן SafeBill',
-                chat_agent_subtitle: 'שאל אותי על החשבוניות שלך',
+                chat_agent_subtitle: 'שאל אותי על החשבונות שלך',
                 chat_toggle_aria: "פתח צ'אט עם סוכן SafeBill",
                 chat_greeting:
-                    'היי! אפשר לשאול אותי כמה נשאר לך לשלם, לחפש חשבונית לפי מוסד או קטגוריה, ועוד. איך אפשר לעזור?',
+                    'היי! אפשר לשאול אותי כמה נשאר לך לשלם, לחפש חשבון לפי מוסד או קטגוריה, ועוד. איך אפשר לעזור?',
                 chat_input_placeholder: 'שאל שאלה...',
                 chat_typing: 'כותב...',
                 chat_send_aria: 'שלח',
@@ -189,7 +190,8 @@ document.addEventListener('alpine:init', () => {
 
                 upload_section_title: 'Upload New Bill',
                 upload_zone_aria: 'Upload a bill - drag a file, take a photo, or click to choose',
-                uploading_status: 'Uploading and analyzing the bill...',
+                uploading_status: 'Uploading file...',
+                analyzing_status: 'Analyzing document...',
                 upload_success_saved: 'Bill saved successfully, refreshing...',
                 upload_partial_saved_title: 'Bill saved',
                 upload_partial_saved_message:
@@ -291,6 +293,10 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('billUpload', () => ({
         isDragging: false,
         uploading: false,
+        // 'uploading' | 'analyzing' - only meaningful while uploading is
+        // true. Only read by the template; see upload() below for how
+        // the transition between the two is timed.
+        uploadPhase: 'uploading',
         result: null,
         errorMessage: null,
         // True only for the 502/504 "AI scanner unavailable" case - a
@@ -345,6 +351,23 @@ document.addEventListener('alpine:init', () => {
 
         async upload(file) {
             this.uploading = true;
+            this.uploadPhase = 'uploading';
+            // Approximates the upload-finished/analysis-started transition.
+            // fetch() has no real upload-progress signal to key off (that
+            // needs XMLHttpRequest's upload.onload/onprogress instead), and
+            // switching the whole request over to XHR just for this would
+            // touch every status-code branch below for little real benefit
+            // at typical bill-photo file sizes, where the upload itself
+            // normally finishes in well under a second - the vision call
+            // that follows is the genuinely slow part (a real network round
+            // trip to a hosted model, ~1-4s typically; see
+            // settings.vlm_timeout_seconds in app/config.py). 900ms is a
+            // reasonable stand-in for "the upload is very likely done by
+            // now" without pretending to track real progress.
+            const analyzingTimer = setTimeout(() => {
+                this.uploadPhase = 'analyzing';
+            }, 900);
+
             try {
                 // Raw bytes as the body, not FormData/multipart - matches
                 // POST /bills/upload's contract exactly (app/routers/
@@ -398,6 +421,7 @@ document.addEventListener('alpine:init', () => {
             } catch (networkError) {
                 this.errorMessage = t('error_network');
             } finally {
+                clearTimeout(analyzingTimer);
                 this.uploading = false;
             }
         },
