@@ -644,12 +644,80 @@
 
     </main>
 
-    <footer class="border-t border-white/10 mt-4">
-        <div class="max-w-6xl mx-auto px-6 py-6 text-center space-y-1">
-            <p class="text-sm text-slate-400" x-text="$store.app.t('footer_credit')"></p>
-            <p class="text-xs text-slate-600" x-text="$store.app.t('footer_rights')"></p>
+    <!-- Terms of Use: footer link + modal, own x-data scope (see
+         termsModal() in dashboard.js) - independent of aboutModal() even
+         though the shape is identical, same reasoning as onboarding()/
+         chatWidget() each getting their own scope rather than being
+         glued onto an unrelated existing component. -->
+    <div x-data="termsModal()">
+        <footer class="border-t border-white/10 mt-4">
+            <div class="max-w-6xl mx-auto px-6 py-6 text-center space-y-1">
+                <p class="text-sm text-slate-400" x-text="$store.app.t('footer_credit')"></p>
+                <p class="text-xs text-slate-600" x-text="$store.app.t('footer_rights')"></p>
+                <!-- Deliberately literal English text, not routed through
+                     $store.app.t() - kept in English regardless of the
+                     active dashboard language, as specifically asked for. -->
+                <p>
+                    <button
+                        type="button"
+                        @click="open = true"
+                        class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition"
+                    >Terms of Use</button>
+                </p>
+            </div>
+        </footer>
+
+        <div
+            x-show="open"
+            x-cloak
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            @keydown.escape.window="open && (open = false)"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-label="Terms of Use"
+        >
+            <div class="absolute inset-0 bg-black/60" @click="open = false"></div>
+
+            <div class="relative glass-strong rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[85vh] overflow-y-auto" @click.stop>
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-slate-100">תנאי שימוש</h3>
+                    <button type="button" @click="open = false" :aria-label="$store.app.t('close')" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+                </div>
+
+                <!-- Hebrew only, hardcoded - not part of the bilingual
+                     $store.app.t() dictionary, matching what was
+                     specifically asked for (a Hebrew disclaimer, behind
+                     an English-labeled trigger). select-text: this is
+                     exactly the kind of text a user might want to copy
+                     (e.g. to save a record of it), unlike most of this
+                     dark theme's select-none-by-default chrome. -->
+                <div class="text-sm text-slate-300 leading-relaxed select-text space-y-3">
+                    <p>
+                        SafeBill הוא פרויקט אישי ועצמאי, ולא שירות מסחרי או פיננסי מורשה.
+                        השירות ניתן כפי שהוא ("AS-IS"), ללא כל אחריות מפורשת או משתמעת
+                        לגבי זמינותו, דיוקו או התאמתו למטרה מסוימת.
+                    </p>
+                    <p>
+                        הבינה המלאכותית המשמשת לזיהוי חשבונות עשויה לטעות מדי פעם - מומלץ
+                        לוודא נתונים קריטיים (כגון סכומים ותאריכי תשלום) לפני ביצוע כל
+                        פעולה כספית בהתבסס עליהם. מפעיל השירות אינו נושא באחריות לכל נזק,
+                        ישיר או עקיף, לרבות אך לא רק אובדן נתונים או החלטות כספיות שהתקבלו
+                        על סמך המידע המוצג באפליקציה.
+                    </p>
+                    <p>
+                        השימוש באפליקציה הוא לפי שיקול דעתכם ועל אחריותכם בלבד. מומלץ
+                        לשמור מעת לעת עותק עצמאי של נתונים חשובים (למשל באמצעות ייצוא
+                        לקובץ CSV).
+                    </p>
+                </div>
+            </div>
         </div>
-    </footer>
+    </div>
 
     <!-- Chat widget: floating bubble + panel, wired to POST /api/chat via
          the chatWidget Alpine component (app/static/js/dashboard.js).

@@ -1,0 +1,84 @@
+# Mounted into the nginx container at /etc/nginx/templates/nginx.conf.template
+# (see docker-compose.prod.yml) - the official nginx image auto-processes
+# every *.template file found there with envsubst before starting nginx,
+# writing the result to /etc/nginx/conf.d/nginx.conf. Only ${DOMAIN} is a
+# real substitution target: envsubst only touches variables that actually
+# exist in the container's environment, so nginx's own runtime variables
+# below ($host, $remote_addr, $scheme, etc.) are left completely alone -
+# those were never environment variables to begin with.
+#
+# To swap in your real domain: set DOMAIN once in .env (see
+# docker-compose.prod.yml's nginx service and .env.example) - nothing in
+# this file itself needs editing.
+
+# Plain HTTP - only exists to (a) serve the Let's Encrypt ACME challenge
+# so certbot can prove domain ownership, and (b) send everything else to
+# HTTPS. Never proxies to the app directly.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS - terminates TLS and proxies everything to the FastAPI app over
+# the internal Docker network. This is the only path into the app; api
+# publishes no port of its own to the host (see docker-compose.prod.yml).
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # Modern-only TLS (1.2 minimum, ECDHE ciphers only) - deliberately
+    # self-contained rather than `include`-ing certbot-generated helper
+    # files like options-ssl-nginx.conf/ssl-dhparams.pem: those are
+    # reliably created by certbot's --nginx plugin, not guaranteed by the
+    # --webroot method init-letsencrypt.sh uses (webroot is the right
+    # choice here specifically because it doesn't need certbot to have
+    # its own live integration with nginx - it just drops a file in a
+    # shared directory). Restricting to ECDHE ciphers avoids needing a
+    # separate dhparam file at all.
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Uploaded bill images/PDFs can be up to 10MB (see
+    # settings.max_upload_bytes in app/config.py) - nginx's own default
+    # client_max_body_size (1MB) would reject those with a 413 before
+    # they ever reach the app.
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # app/auth.py infers the `secure` cookie flag from
+        # request.url.scheme - without this header, FastAPI would see
+        # every request as plain http (the proxy_pass above is
+        # unencrypted on the nginx-to-api hop, by design - that hop
+        # never leaves the internal Docker network) and never set the
+        # Secure flag on the session cookie at all.
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Generous, not the proxy default (60s) - a bill upload's own
+        # timeout budget is already ~15-75s server-side (vlm_timeout_seconds
+        # x retries, see app/config.py) before nginx should ever be the
+        # one to give up first.
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+}

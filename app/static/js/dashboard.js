@@ -846,6 +846,15 @@ document.addEventListener('alpine:init', () => {
         open: false,
     }));
 
+    // Separate from aboutModal() on purpose, even though both are just
+    // { open: false } - "About/Privacy" and "Terms of Use" are
+    // independent concerns a user can open from different places
+    // (header vs. footer), and coupling their open state would mean
+    // dismissing one could silently affect the other for no reason.
+    Alpine.data('termsModal', () => ({
+        open: false,
+    }));
+
     Alpine.data('logoutButton', () => ({
         async logout() {
             // Best-effort - even if this fails (network hiccup, already

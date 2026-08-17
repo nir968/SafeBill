@@ -1,0 +1,170 @@
+# Production compose file - deliberately separate from docker-compose.yml
+# (the dev one), not a variant of it via override files, since the two
+# have fundamentally different trust models: dev publishes db/redis/api
+# ports straight to the host for convenience (psql/redis-cli from your
+# own machine, hitting the API directly without a proxy in front); prod
+# publishes NOTHING except nginx's 80/443, and every other service only
+# talks to nginx/each other over the `internal` network below.
+#
+# One-time setup before first `docker compose -f docker-compose.prod.yml up -d`:
+#   1. Point your domain's DNS A/AAAA record at this server's public IP.
+#   2. Copy .env.example to .env and fill in every value - DOMAIN,
+#      CERTBOT_EMAIL, POSTGRES_PASSWORD, SECRET_KEY, INTERNAL_API_KEY,
+#      and whichever VISION_PROVIDER key you're using.
+#   3. Run ./init-letsencrypt.sh once (see that script's own comments for
+#      why this can't just happen automatically as part of `up`).
+#   4. `docker compose -f docker-compose.prod.yml up -d`
+#
+# Renewal after that point is automatic - see the `certbot` service below.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-safebill}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-safebill}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-safebill}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    # No `ports:` - unreachable from outside the Docker host entirely.
+    # backup.sh reaches this via `docker compose exec db pg_dump ...`,
+    # not a host-installed psql/pg_dump client hitting localhost:5432.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build: .
+    restart: unless-stopped
+    # --proxy-headers, not the bare command docker-compose.yml (dev) uses -
+    # without it, uvicorn ignores nginx's X-Forwarded-Proto header
+    # entirely and request.url.scheme stays "http" for every request
+    # regardless of the real client-facing scheme, which means
+    # app/auth.py's `secure=request.url.scheme == "https"` cookie logic
+    # would silently never set the Secure flag in production. Trusting
+    # `*` here (not a specific IP) is safe specifically because api has
+    # no published port at all (see this file's own networking notes) -
+    # nothing except another container already on the `internal` network
+    # can present these headers to it in the first place.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+    env_file:
+      - .env
+    environment:
+      # Overrides whatever DATABASE_URL/REDIS_URL a stray .env value
+      # might set - inside this compose file, the db/redis hostnames are
+      # always these two service names, never localhost or an external
+      # host, so these two are intentionally not left to .env to decide.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-safebill}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safebill}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    # No `ports:` - nginx is the only way in, reaching this at
+    # api:8000 over the internal network (see nginx/nginx.conf.template).
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: arq app.worker.WorkerSettings
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-safebill}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safebill}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The ONLY place your domain name needs to be set - flows into
+      # nginx/nginx.conf.template via envsubst (nginx's official image
+      # auto-processes *.template files in /etc/nginx/templates/ using
+      # exactly the env vars actually set on the container, so it never
+      # touches nginx's own unrelated $host/$remote_addr/etc. runtime
+      # variables - those aren't real environment variables, so envsubst
+      # leaves them alone) and into init-letsencrypt.sh for the actual
+      # certificate request.
+      DOMAIN: ${DOMAIN:?DOMAIN must be set in .env - e.g. DOMAIN=safebill.example.com}
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # Certificates renew silently in the background (see the `certbot`
+    # service below) but nginx doesn't notice a changed file on disk by
+    # itself - it needs a reload to pick one up. Reloading on a timer
+    # regardless of whether anything actually changed is a harmless
+    # no-op the rest of the time, and far simpler than wiring up
+    # cross-container signaling (e.g. mounting the Docker socket into
+    # the certbot container just to send nginx a signal) for a
+    # personal-project-scale deployment.
+    command: >
+      sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"
+    depends_on:
+      - api
+    networks:
+      - internal
+      - default
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # certbot renew is a no-op unless the cert is within 30 days of its
+    # 90-day expiry, so running it twice a day is standard practice, not
+    # wasteful. This only RENEWS - it never requests a certificate for a
+    # domain that doesn't have one yet, which is exactly why
+    # init-letsencrypt.sh (issuing the first certificate) has to be run
+    # by hand once before this stack comes up for the first time - see
+    # that script's own comments for the chicken-and-egg reason why.
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    networks:
+      - default
+
+volumes:
+  pgdata:
+  redisdata:
+  certbot-etc:
+  certbot-www:
+
+networks:
+  # Every service that touches user data or the database lives here and
+  # nowhere else - db/redis/worker aren't even attached to the default
+  # (internet-facing) network at all, so there is no route to them except
+  # from another container already on this network.
+  internal:
+    driver: bridge

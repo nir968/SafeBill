@@ -1,6 +1,12 @@
 # Security / Secrets (CRITICAL)
 .env
 .env.*
+# ...except the checked-in template itself, which has to be trackable to
+# be any use to a fresh clone (e.g. this repo's own prod server) - it was
+# being silently swallowed by the bare `.env.*` pattern above along with
+# every real secret-bearing file, and had never actually been committed
+# as a result.
+!.env.example
 
 # Python Cache and Virtual Environments
 __pycache__/
@@ -14,6 +20,10 @@ env/
 docker-compose.override.yml
 pgdata/
 redis_data/
+
+# pg_dump output (see backup.sh) - real user financial data, never
+# committed regardless of where the script happens to be run from.
+backups/
 
 # OS generated files
 .DS_Store
