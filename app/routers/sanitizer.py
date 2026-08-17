@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
@@ -9,11 +10,17 @@ from app.config import settings
 from app.crud import get_or_create_user
 from app.db import get_db
 from app.models import Bill
-from app.vision import BillValidationError, VisionProviderError, vision_client
+from app.vision import BillValidationError, vision_client
 
 logger = logging.getLogger("safebill.sanitizer")
 
 router = APIRouter(prefix="/bills", tags=["sanitizer"])
+
+# Placeholder institution name for a bill saved while vision extraction was
+# unavailable (see the `except Exception` branch in upload_bill below). Not
+# translated/configurable - it only ever appears in the dashboard until a
+# human corrects it, unlike every other user-facing string in this file.
+_UNEXTRACTED_INSTITUTION = "חשבונית לא זוהתה (נדרש עדכון ידני)"
 
 # Bounds total concurrent VLM calls in this process — the backpressure valve
 # that keeps a traffic burst from turning into N simultaneous image buffers.
@@ -58,12 +65,28 @@ async def upload_bill(request: Request, user_id: int, db: AsyncSession = Depends
                 vision_client.extract_bill_fields(bytes(buffer)),
                 timeout=settings.vlm_timeout_seconds,
             )
-    except asyncio.TimeoutError:
-        raise HTTPException(504, "Vision extraction timed out")
     except BillValidationError as exc:
+        # Content problem, not an availability problem - the model looked
+        # at this and said it isn't a usable bill. Rejected outright
+        # rather than saved as a placeholder (see the `except Exception`
+        # branch below), or every random photo a user uploads by mistake
+        # would leave a garbage row in their bill list.
         raise HTTPException(422, str(exc))
-    except VisionProviderError as exc:
-        raise HTTPException(502, str(exc))
+    except Exception as exc:
+        # Deliberately broad, not just asyncio.TimeoutError/VisionProviderError:
+        # this also has to cover whatever the vision SDK's HTTP/retry
+        # internals raise on a 429/quota-exhausted response that *isn't*
+        # one of google.genai's documented exception types - "the AI is
+        # temporarily unavailable" must never 500 the request and drop the
+        # user's upload. The bill is still saved below, with placeholder
+        # fields, so nothing is lost; it just needs a manual correction
+        # once whatever's wrong with the AI service clears up.
+        logger.warning(
+            "upload_bill: vision extraction unavailable (%s: %s) - saving placeholder",
+            type(exc).__name__,
+            exc,
+        )
+        extracted = None
     finally:
         # Explicit destruction, not "let GC get to it eventually": zero the
         # buffer in place, then drop the reference. This is best-effort
@@ -82,6 +105,37 @@ async def upload_bill(request: Request, user_id: int, db: AsyncSession = Depends
     # exist before this insert, and this may be this Telegram user's very
     # first interaction with the bot (no prior /last or /stats call).
     await get_or_create_user(db, user_id)
+
+    if extracted is None:
+        # Vision extraction was unavailable (see the `except Exception`
+        # above) - save what we actually have, which is just "a bill was
+        # uploaded", rather than lose it. No duplicate check (nothing real
+        # to compare yet) and no Analyst Agent enqueue: analyze_bill folds
+        # this bill's amount into InstitutionStats' rolling Welford
+        # baseline, and doing that with a fake $0 placeholder would
+        # corrupt anomaly detection for every future real bill from this
+        # institution. Both resume naturally once the row has real data -
+        # either a future re-upload succeeds and creates a proper bill, or
+        # this one gets corrected by hand.
+        bill = Bill(
+            user_id=user_id,
+            institution=_UNEXTRACTED_INSTITUTION,
+            amount=Decimal("0"),
+            status="extraction_failed",
+        )
+        db.add(bill)
+        await db.commit()
+        await db.refresh(bill)
+        return {
+            "bill_id": bill.id,
+            "status": "accepted",
+            "extracted": False,
+            "institution": bill.institution,
+            "amount": float(bill.amount),
+            "currency": bill.currency,
+            "category": bill.category,
+            "due_date": None,
+        }
 
     # Duplicate-upload guard: same user, same institution (case-insensitive
     # - two photos of the same physical bill can extract with different
@@ -122,4 +176,13 @@ async def upload_bill(request: Request, user_id: int, db: AsyncSession = Depends
     redis = request.app.state.redis
     await redis.enqueue_job("analyze_bill", bill.id)
 
-    return {"bill_id": bill.id, "status": "accepted", "category": bill.category}
+    return {
+        "bill_id": bill.id,
+        "status": "accepted",
+        "extracted": True,
+        "institution": bill.institution,
+        "amount": float(bill.amount),
+        "currency": bill.currency,
+        "category": bill.category,
+        "due_date": bill.due_date.isoformat() if bill.due_date else None,
+    }

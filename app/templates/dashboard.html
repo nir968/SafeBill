@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>לוח הבקרה - SafeBill</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen">
+<body data-user-id="{{ user_id }}" x-data="aboutModal()" :dir="$store.app.lang === 'he' ? 'rtl' : 'ltr'">
 
-    <header class="bg-white border-b border-slate-200">
+    <header class="glass-strong sticky top-0 z-40">
         <div class="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
             <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center flex-shrink-0">
                 <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -17,272 +18,670 @@
                 </svg>
             </div>
             <div>
-                <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-transparent">SafeBill</h1>
-                <p class="text-sm text-slate-500">לוח בקרה חכם</p>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
+                <p class="text-sm text-slate-400" x-text="$store.app.t('dashboard_subtitle')"></p>
             </div>
+            <button
+                type="button"
+                @click="$store.app.toggleLang()"
+                class="ms-auto text-sm text-slate-300 hover:text-white transition"
+            >
+                🌐 EN / עב
+            </button>
+            <button
+                type="button"
+                @click="open = true"
+                class="text-sm text-slate-300 hover:text-white transition"
+            >
+                <span x-text="$store.app.t('about_link')"></span>
+            </button>
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <!-- About & Privacy modal. Rooted at <body> (x-data="aboutModal()"
+         above), not nested under <main x-data="billEditor()"> - the "אודות"
+         trigger button lives in <header>, a sibling of <main>, so the
+         shared state needs a common ancestor above both; nesting this
+         under billEditor's scope instead would silently bind the button
+         and this modal to billEditor's own `open` property (edit-modal
+         state), not this one. -->
+    <div
+        x-show="open"
+        x-cloak
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @keydown.escape.window="open && (open = false)"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
+        <div class="absolute inset-0 bg-black/60" @click="open = false"></div>
 
-        <section>
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">סיכום</h2>
+        <div class="relative glass-strong rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[85vh] overflow-y-auto" @click.stop>
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-slate-100" x-text="$store.app.t('about_title')"></h3>
+                <button type="button" @click="open = false" :aria-label="$store.app.t('close')" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+            </div>
+
+            <p class="text-sm text-slate-300 leading-relaxed" x-text="$store.app.t('about_body')"></p>
+
+            <div class="glass-card rounded-xl p-4 space-y-2 border border-emerald-500/20">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-emerald-300 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="10" width="16" height="10" rx="2" />
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                    </svg>
+                    <h4 class="text-sm font-semibold text-emerald-300" x-text="$store.app.t('privacy_title')"></h4>
+                </div>
+                <!-- The original inline <strong> emphasis mid-sentence
+                     ("אינן נשמרות לצמיתות") is dropped here - a single
+                     x-text can't carry embedded markup, and splitting the
+                     sentence into three separately-translated fragments
+                     just to keep one bolded phrase wasn't worth the
+                     added translation-key complexity. -->
+                <p class="text-xs text-slate-400 leading-relaxed" x-text="$store.app.t('privacy_body_1')"></p>
+                <p class="text-xs text-slate-500 leading-relaxed" x-text="$store.app.t('privacy_body_2')"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onboarding tutorial - self-contained (own x-data, not shared with
+         anything else), auto-opens once via localStorage (see init() /
+         finish() in app/static/js/dashboard.js's onboarding() component). -->
+    <div x-data="onboarding()">
+        <div
+            x-show="open"
+            x-cloak
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        >
+            <div class="absolute inset-0 bg-black/70"></div>
+
+            <div class="relative glass-strong rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5 text-center">
+                <button type="button" @click="finish()" :aria-label="$store.app.t('close')" class="absolute top-3 left-3 text-slate-400 hover:text-white text-lg leading-none">×</button>
+
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center text-2xl">
+                    <span x-show="step === 1">📤</span>
+                    <span x-show="step === 2">🤖</span>
+                    <span x-show="step === 3">📊</span>
+                </div>
+
+                <template x-if="step === 1">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-1" x-text="$store.app.t('onboarding_step1_title')"></h3>
+                        <p class="text-sm text-slate-400" x-text="$store.app.t('onboarding_step1_body')"></p>
+                    </div>
+                </template>
+                <template x-if="step === 2">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-1" x-text="$store.app.t('onboarding_step2_title')"></h3>
+                        <p class="text-sm text-slate-400" x-text="$store.app.t('onboarding_step2_body')"></p>
+                    </div>
+                </template>
+                <template x-if="step === 3">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-1" x-text="$store.app.t('onboarding_step3_title')"></h3>
+                        <p class="text-sm text-slate-400" x-text="$store.app.t('onboarding_step3_body')"></p>
+                    </div>
+                </template>
+
+                <div class="flex items-center justify-center gap-2">
+                    <template x-for="n in totalSteps" :key="n">
+                        <button
+                            type="button"
+                            @click="goTo(n)"
+                            :class="n === step ? 'bg-indigo-400 w-4' : 'bg-white/20 w-1.5'"
+                            class="h-1.5 rounded-full transition-all"
+                            :aria-label="'שלב ' + n"
+                        ></button>
+                    </template>
+                </div>
+
+                <div class="flex items-center justify-between gap-2 pt-1">
+                    <button type="button" @click="finish()" class="text-sm text-slate-400 hover:text-slate-200 transition" x-text="$store.app.t('skip')"></button>
+                    <div class="flex gap-2">
+                        <button type="button" x-show="step > 1" @click="prev()" class="px-4 py-2 rounded-full text-sm text-slate-300 hover:bg-white/5 transition" x-text="$store.app.t('previous')"></button>
+                        <button
+                            type="button"
+                            @click="next()"
+                            class="px-5 py-2 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium shadow-lg shadow-purple-500/30 transition"
+                        >
+                            <span x-text="step === totalSteps ? $store.app.t('got_it') : $store.app.t('next')"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <main class="max-w-6xl mx-auto px-6 py-8 space-y-8 isolate" x-data="billEditor()" @keydown.escape.window="open && close()">
+
+        <section class="animate-fade-in-up" x-data="billUpload()">
+            <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('upload_section_title')"></h2>
+
+            <div
+                role="button"
+                tabindex="0"
+                :aria-label="$store.app.t('upload_zone_aria')"
+                @click="!uploading && $refs.fileInput.click()"
+                @keydown.enter.prevent="!uploading && $refs.fileInput.click()"
+                @keydown.space.prevent="!uploading && $refs.fileInput.click()"
+                @dragover.prevent="isDragging = true"
+                @dragleave.prevent="isDragging = false"
+                @drop.prevent="isDragging = false; handleFiles($event.dataTransfer.files)"
+                :class="isDragging ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/15 hover:border-white/25'"
+                class="glass-card rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+                <!-- capture="environment" hints mobile browsers to offer
+                     the rear camera directly in the file picker sheet,
+                     alongside the normal gallery/browse options - it does
+                     not restrict selection to the camera only. -->
+                <input
+                    x-ref="fileInput"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    capture="environment"
+                    class="hidden"
+                    @change="handleFiles($event.target.files); $event.target.value = ''"
+                >
+
+                <template x-if="uploading">
+                    <div class="flex flex-col items-center gap-3 py-4">
+                        <div class="w-8 h-8 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></div>
+                        <p class="text-sm text-slate-300" x-text="$store.app.t('uploading_status')"></p>
+                    </div>
+                </template>
+
+                <template x-if="!uploading && result && result.extracted">
+                    <div class="flex flex-col items-center gap-2 py-2">
+                        <p class="text-3xl">✅</p>
+                        <p class="text-slate-100 font-medium" x-text="result.institution"></p>
+                        <p class="text-2xl font-bold bg-gradient-to-r from-amber-300 to-pink-400 bg-clip-text text-transparent" x-text="formatMoney(result.amount, result.currency)"></p>
+                        <p class="text-xs text-slate-500 mt-1" x-text="$store.app.t('upload_success_saved')"></p>
+                    </div>
+                </template>
+
+                <!-- Backend saved the bill but vision extraction itself was
+                     unavailable (e.g. AI quota exhausted) - shown distinctly
+                     from a real success so ₪0.00 / a placeholder name never
+                     reads as an actual result. See POST /bills/upload's
+                     `extracted: false` branch in app/routers/sanitizer.py. -->
+                <template x-if="!uploading && result && !result.extracted">
+                    <div class="flex flex-col items-center gap-2 py-2">
+                        <p class="text-3xl">📥</p>
+                        <p class="text-slate-100 font-medium" x-text="$store.app.t('upload_partial_saved_title')"></p>
+                        <p class="text-xs text-amber-300" x-text="$store.app.t('upload_partial_saved_message')"></p>
+                        <p class="text-xs text-slate-500 mt-1" x-text="$store.app.t('refreshing')"></p>
+                    </div>
+                </template>
+
+                <template x-if="!uploading && !result && errorMessage">
+                    <div class="flex flex-col items-center gap-2 py-2">
+                        <p class="text-3xl">⚠️</p>
+                        <p class="text-rose-300 text-sm" x-text="errorMessage"></p>
+                        <template x-if="scanUnavailable">
+                            <!-- openCreateModal() lives on billEditor() (the
+                                 <main> ancestor's x-data), not this section's
+                                 own billUpload() scope - same up-the-tree
+                                 resolution as the standalone manual-add
+                                 button below the drop zone. @click.stop so
+                                 clicking this button doesn't also trigger the
+                                 drop zone's own @click (open file picker). -->
+                            <button
+                                type="button"
+                                @click.stop="openCreateModal()"
+                                class="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2 mt-1"
+                                x-text="$store.app.t('manual_add')"
+                            ></button>
+                        </template>
+                        <template x-if="!scanUnavailable">
+                            <p class="text-xs text-slate-500 mt-1" x-text="$store.app.t('try_again_hint')"></p>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="!uploading && !result && !errorMessage">
+                    <div class="flex flex-col items-center gap-3 py-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 16V4M12 4 7 9M12 4l5 5" />
+                                <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+                            </svg>
+                        </div>
+                        <p class="text-slate-200 font-medium" x-text="$store.app.t('drop_zone_prompt')"></p>
+                        <p class="text-xs text-slate-500" x-text="$store.app.t('file_types_hint')"></p>
+                    </div>
+                </template>
+            </div>
+
+            <!-- openCreateModal() lives on billEditor() (x-data on the
+                 <main> ancestor), not on this section's own billUpload()
+                 scope - Alpine resolves it by walking up to the nearest
+                 ancestor x-data that has it, same as any other property
+                 not found in the current component. -->
+            <div class="mt-3 text-center">
+                <button
+                    type="button"
+                    @click="openCreateModal()"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-white/10 text-sm text-slate-300 hover:text-white hover:border-white/20 transition"
+                >
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    <span x-text="$store.app.t('manual_add')"></span>
+                </button>
+            </div>
+        </section>
+
+        <section class="animate-fade-in-up">
+            <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('summary_title')"></h2>
 
             {% if pending_by_currency %}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <p class="text-sm text-slate-500">חשבוניות ממתינות לתשלום</p>
-                    <p class="mt-2 text-3xl font-bold text-slate-900">{{ pending_count }}</p>
+                <div class="glass-card rounded-2xl p-5 select-none">
+                    <p class="text-sm text-slate-400" x-text="$store.app.t('pending_bills_count_label')"></p>
+                    <p class="mt-2 text-3xl font-bold text-slate-100">{{ pending_count }}</p>
                 </div>
                 {% for row in pending_by_currency %}
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <p class="text-sm text-slate-500">
-                        סך הכל ממתין
+                <div class="glass-card rounded-2xl p-5 select-none">
+                    <p class="text-sm text-slate-400">
+                        <span x-text="$store.app.t('pending_total_label')"></span>
                         {% if pending_by_currency|length > 1 %}({{ row.currency }}){% endif %}
                     </p>
-                    <p class="mt-2 text-3xl font-bold text-amber-600">
+                    <p class="mt-2 text-3xl font-bold bg-gradient-to-r from-amber-300 to-pink-400 bg-clip-text text-transparent">
                         {{ row.total|money(row.currency) }}
                     </p>
-                    <p class="mt-1 text-xs text-slate-400">{{ row.count }} חשבוניות</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ row.count }} <span x-text="$store.app.t('bills_count_suffix')"></span></p>
                 </div>
                 {% endfor %}
             </div>
             {% else %}
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+            <div class="glass-card rounded-2xl p-8 text-center">
                 <p class="text-4xl mb-2">✅</p>
-                <p class="text-slate-600 font-medium">הכל שולם! אין חשבוניות ממתינות.</p>
+                <p class="text-slate-300 font-medium" x-text="$store.app.t('all_paid_message')"></p>
             </div>
             {% endif %}
         </section>
 
-        <section>
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">חשבוניות אחרונות</h2>
-
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                {% if bills %}
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">מוסד</th>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">סכום</th>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">תאריך יעד</th>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">סטטוס</th>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">קטגוריה</th>
-                                <th class="px-4 py-3 text-start font-semibold text-slate-600">אסמכתא</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for bill in bills %}
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{{ bill.institution }}</td>
-                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">{{ bill.amount|money(bill.currency) }}</td>
-                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
-                                    {% if bill.due_date %}
-                                        {{ bill.due_date.strftime('%d/%m/%Y') }}
-                                    {% else %}
-                                        <span class="text-slate-400">לא ידוע</span>
-                                    {% endif %}
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    {% if bill.status == "paid" %}
-                                        <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-medium">שולם</span>
-                                    {% elif bill.status == "analyzed" %}
-                                        <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2.5 py-1 text-xs font-medium">פתוח</span>
-                                    {% else %}
-                                        <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-2.5 py-1 text-xs font-medium">בעיבוד</span>
-                                    {% endif %}
-                                </td>
-                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
-                                    {% if bill.category %}
-                                        {{ bill.category }}
-                                    {% else %}
-                                        <span class="text-slate-400">—</span>
-                                    {% endif %}
-                                </td>
-                                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
-                                    {% if bill.asmachta %}
-                                        {{ bill.asmachta }}
-                                    {% else %}
-                                        <span class="text-slate-400">—</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="p-8 text-center">
-                    <p class="text-4xl mb-2">🧾</p>
-                    <p class="text-slate-600 font-medium">עדיין אין חשבוניות שמורות.</p>
-                </div>
-                {% endif %}
+        <!-- Shared by both bill tables below (regular + tickets) so a
+             future column change can't be applied to one and forgotten on
+             the other - the two lists differ only in which rows they
+             contain (see regular_bills/ticket_bills in
+             app/routers/web.py), never in structure. -->
+        {% macro bill_table(bills, empty_icon, empty_text_key) %}
+        <div class="glass-card rounded-2xl overflow-hidden">
+            {% if bills %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-white/5 border-b border-white/10">
+                        <tr>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_institution')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_amount')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_due_date')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_status')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_category')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_reference')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_actions')"></th>
+                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_payment')"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        {% for bill in bills %}
+                        <tr class="hover:bg-white/5 transition">
+                            <td class="px-4 py-3 font-medium text-slate-100 whitespace-nowrap">{{ bill.institution }}</td>
+                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap">{{ bill.amount|money(bill.currency) }}</td>
+                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap">
+                                {% if bill.due_date %}
+                                    {{ bill.due_date.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    <span class="text-slate-500" x-text="$store.app.t('unknown_date')"></span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if bill.status == "paid" %}
+                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20 px-2.5 py-1 text-xs font-medium" x-text="$store.app.t('status_paid')"></span>
+                                {% elif bill.status == "analyzed" %}
+                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/20 px-2.5 py-1 text-xs font-medium" x-text="$store.app.t('status_analyzed')"></span>
+                                {% elif bill.status == "extraction_failed" %}
+                                    <span class="inline-flex items-center rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/20 px-2.5 py-1 text-xs font-medium" x-text="$store.app.t('status_extraction_failed')"></span>
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-full bg-slate-500/15 text-slate-300 border border-slate-500/20 px-2.5 py-1 text-xs font-medium" x-text="$store.app.t('status_pending_analysis')"></span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap">
+                                {% if bill.category %}
+                                    <!-- Looked up by the bill's actual DB value
+                                         (Hebrew, e.g. "קנסות ודוחות") - the
+                                         translations dict uses that literal
+                                         string as its own key (see
+                                         app/static/js/dashboard.js), unlike
+                                         status above, which only ever takes
+                                         one of 4 fixed values already handled
+                                         by the branches themselves. -->
+                                    <span x-text="$store.app.t('{{ bill.category }}')"></span>
+                                {% else %}
+                                    <span class="text-slate-500">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap">
+                                {% if bill.asmachta %}
+                                    {{ bill.asmachta }}
+                                {% else %}
+                                    <span class="text-slate-500">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <!-- Bill data crosses into Alpine via data-*
+                                     attributes (read through $el.dataset in
+                                     openEditModal), not a `|tojson`-style
+                                     inline object - this app's Jinja2Templates
+                                     setup has no tojson filter registered, and
+                                     data-* keeps Jinja's normal HTML-escaping
+                                     intact for free (same pattern as
+                                     data-user-id on <body>). -->
+                                <button
+                                    type="button"
+                                    @click="openEditModal($el)"
+                                    data-id="{{ bill.id }}"
+                                    data-institution="{{ bill.institution }}"
+                                    data-amount="{{ bill.amount }}"
+                                    data-currency="{{ bill.currency }}"
+                                    data-due-date="{{ bill.due_date.isoformat() if bill.due_date else '' }}"
+                                    data-status="{{ bill.status }}"
+                                    data-category="{{ bill.category or '' }}"
+                                    :aria-label="$store.app.t('edit_bill')"
+                                    class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-white/5 transition"
+                                >
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 20h9" />
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                    </svg>
+                                </button>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if bill.status != "paid" %}
+                                <!-- Quick-pay: PUT /bills/{id}/pay directly
+                                     from the row, no modal - see quickPay()
+                                     in app/static/js/dashboard.js. Hidden
+                                     once a bill is already paid, since
+                                     marking it paid again is a no-op. -->
+                                <button
+                                    type="button"
+                                    @click="quickPay({{ bill.id }})"
+                                    :disabled="payingBillId === {{ bill.id }}"
+                                    :aria-label="$store.app.t('mark_paid_aria')"
+                                    :title="$store.app.t('mark_paid_aria')"
+                                    class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 transition"
+                                >
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M20 6 9 17l-5-5" />
+                                    </svg>
+                                </button>
+                                {% else %}
+                                <span class="text-slate-600">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <div class="p-8 text-center">
+                <p class="text-4xl mb-2">{{ empty_icon }}</p>
+                <p class="text-slate-300 font-medium" x-text="$store.app.t('{{ empty_text_key }}')"></p>
+            </div>
+            {% endif %}
+        </div>
+        {% endmacro %}
+
+        <section class="animate-fade-in-up">
+            <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('regular_bills_title')"></h2>
+            {{ bill_table(regular_bills, '🧾', 'no_bills_saved') }}
         </section>
+
+        <section class="animate-fade-in-up">
+            <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('tickets_title')"></h2>
+            {{ bill_table(ticket_bills, '🚨', 'no_tickets') }}
+        </section>
+
+        <div
+            x-show="open"
+            x-cloak
+            x-transition:enter="transition ease-out duration-150"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-100"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+            <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+
+            <div class="relative glass-strong rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" @click.stop>
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-slate-100" x-text="form.id ? $store.app.t('edit_bill') : $store.app.t('add_bill_title')">עריכת חשבונית</h3>
+                    <button type="button" @click="close()" :aria-label="$store.app.t('close')" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+                </div>
+
+                <form @submit.prevent="save()" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_institution')"></label>
+                        <input
+                            x-model="form.institution"
+                            type="text"
+                            required
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_amount')"></label>
+                            <input
+                                x-model="form.amount"
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                required
+                                class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('field_currency')"></label>
+                            <!-- Currency codes (ILS/USD/EUR/GBP) are not
+                                 translated - they're the same three-letter
+                                 codes in every language, and the values
+                                 sent to the backend regardless. -->
+                            <select
+                                x-model="form.currency"
+                                class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            >
+                                <option style="background-color: #161324; color: white;" value="ILS">ILS</option>
+                                <option style="background-color: #161324; color: white;" value="USD">USD</option>
+                                <option style="background-color: #161324; color: white;" value="EUR">EUR</option>
+                                <option style="background-color: #161324; color: white;" value="GBP">GBP</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_due_date')"></label>
+                        <input
+                            x-model="form.due_date"
+                            type="date"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_category')"></label>
+                        <!-- No per-option background classes here - native
+                             <select> popups render outside normal page
+                             compositing, where Tailwind utilities (this
+                             included) are unreliable. See the plain CSS
+                             `select option` rule in dashboard.css, the
+                             actual fix. option value="" stays the raw
+                             Hebrew category string regardless of display
+                             language too - that's the actual value POSTed/
+                             PATCHed to the backend, which only recognizes
+                             the Hebrew strings in ALLOWED_CATEGORIES
+                             (app/vision.py); only the visible label
+                             (x-text) changes with $store.app.lang. -->
+                        <select
+                            x-model="form.category"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                            <option value="">—</option>
+                            <option value="חשמל" x-text="$store.app.t('חשמל')">חשמל</option>
+                            <option value="מים" x-text="$store.app.t('מים')">מים</option>
+                            <option value="ארנונה ומיסים" x-text="$store.app.t('ארנונה ומיסים')">ארנונה ומיסים</option>
+                            <option value="תקשורת ואינטרנט" x-text="$store.app.t('תקשורת ואינטרנט')">תקשורת ואינטרנט</option>
+                            <option value="גז" x-text="$store.app.t('גז')">גז</option>
+                            <option value="ביטוחים" x-text="$store.app.t('ביטוחים')">ביטוחים</option>
+                            <option value="רכב ותחבורה" x-text="$store.app.t('רכב ותחבורה')">רכב ותחבורה</option>
+                            <option value="קנסות ודוחות" x-text="$store.app.t('קנסות ודוחות')">קנסות ודוחות</option>
+                            <option value="שירותים ומנויים" x-text="$store.app.t('שירותים ומנויים')">שירותים ומנויים</option>
+                            <option value="הוצאה כללית" x-text="$store.app.t('הוצאה כללית')">הוצאה כללית</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_status')"></label>
+                        <select
+                            x-model="form.status"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                            <option value="pending_analysis" x-text="$store.app.t('status_pending_analysis')">ממתין לניתוח</option>
+                            <option value="analyzed" x-text="$store.app.t('status_analyzed')">פתוח</option>
+                            <option value="paid" x-text="$store.app.t('status_paid')">שולם</option>
+                            <option value="extraction_failed" x-text="$store.app.t('status_extraction_failed')">נדרש עדכון ידני</option>
+                        </select>
+                    </div>
+
+                    <p x-show="errorMessage" x-cloak class="text-rose-300 text-sm" x-text="errorMessage"></p>
+
+                    <div class="flex gap-2 justify-between pt-2">
+                        <button
+                            type="button"
+                            x-show="form.id"
+                            @click="deleteBill()"
+                            :disabled="saving || deleting"
+                            class="px-4 py-2 rounded-full text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 transition"
+                        >
+                            <span x-text="deleting ? $store.app.t('deleting') : $store.app.t('delete')">מחק</span>
+                        </button>
+                        <div x-show="!form.id" class="flex-1"></div>
+                        <div class="flex gap-2">
+                            <button type="button" @click="close()" class="px-4 py-2 rounded-full text-sm text-slate-300 hover:bg-white/5 transition" x-text="$store.app.t('cancel')"></button>
+                            <button
+                                type="submit"
+                                :disabled="saving || deleting"
+                                class="px-5 py-2 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                            >
+                                <span x-text="saving ? $store.app.t('saving') : (form.id ? $store.app.t('save') : $store.app.t('add'))">שמירה</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
 
     </main>
 
-    <!-- Chat widget: floating bubble + panel, wired to POST /api/chat.
+    <footer class="border-t border-white/10 mt-4">
+        <div class="max-w-6xl mx-auto px-6 py-6 text-center space-y-1">
+            <p class="text-sm text-slate-400" x-text="$store.app.t('footer_credit')"></p>
+            <p class="text-xs text-slate-600" x-text="$store.app.t('footer_rights')"></p>
+        </div>
+    </footer>
+
+    <!-- Chat widget: floating bubble + panel, wired to POST /api/chat via
+         the chatWidget Alpine component (app/static/js/dashboard.js).
          "Real-time" here means a normal fetch()-based request/response
-         exchange rendered smoothly into the message list, not literal
-         streaming - the backend returns one full reply per message after
-         its tool-use loop completes, not a token stream. -->
-    <div class="fixed bottom-6 start-6 z-50">
+         exchange rendered into the message list, not literal streaming -
+         the backend returns one full reply per message after its
+         tool-use loop completes, not a token stream. -->
+    <div x-data="chatWidget()">
         <button
-            id="chat-toggle"
             type="button"
-            aria-label="פתח צ'אט עם סוכן SafeBill"
-            class="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg flex items-center justify-center text-2xl transition"
+            :aria-label="$store.app.t('chat_toggle_aria')"
+            @click="toggle()"
+            class="fixed bottom-6 start-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 text-white flex items-center justify-center text-2xl transition hover:scale-105"
         >
             💬
         </button>
-    </div>
 
-    <div
-        id="chat-panel"
-        class="fixed bottom-24 start-6 z-50 hidden w-80 sm:w-96 h-[28rem] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden"
-    >
-        <div class="bg-indigo-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-            <div>
-                <p class="font-semibold">סוכן SafeBill</p>
-                <p class="text-xs text-indigo-100">שאל אותי על החשבוניות שלך</p>
+        <div
+            x-show="open"
+            x-cloak
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 translate-y-2"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 translate-y-2"
+            class="fixed bottom-24 start-6 z-50 w-80 sm:w-96 h-[28rem] glass-strong rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        >
+            <div class="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+                <div>
+                    <p class="font-semibold" x-text="$store.app.t('chat_agent_name')"></p>
+                    <p class="text-xs text-white/80" x-text="$store.app.t('chat_agent_subtitle')"></p>
+                </div>
+                <button type="button" @click="close()" :aria-label="$store.app.t('close')" class="text-white/80 hover:text-white text-xl leading-none">×</button>
             </div>
-            <button id="chat-close" type="button" aria-label="סגור" class="text-indigo-100 hover:text-white text-xl leading-none">×</button>
-        </div>
 
-        <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50">
-            <div class="flex justify-start">
-                <div class="max-w-[85%] rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                    היי! אפשר לשאול אותי כמה נשאר לך לשלם, לחפש חשבונית לפי מוסד או קטגוריה, ועוד. איך אפשר לעזור?
+            <div x-ref="chatMessages" class="chat-scroll flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                <!-- x-text (never x-html): every message here, including
+                     the agent's, is rendered as plain text. x-html would
+                     be a real XSS opening if an LLM reply ever contained
+                     markup; x-text escapes it unconditionally. -->
+                <template x-for="(message, index) in messages" :key="index">
+                    <div :class="message.sender === 'user' ? 'flex justify-start' : 'flex justify-end'">
+                        <div
+                            x-text="message.text"
+                            :class="message.sender === 'user'
+                                ? 'max-w-[85%] rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white px-3 py-2 text-sm'
+                                : 'max-w-[85%] rounded-2xl glass text-slate-200 px-3 py-2 text-sm'"
+                        ></div>
+                    </div>
+                </template>
+
+                <div x-show="sending" x-cloak class="flex justify-end">
+                    <div class="rounded-2xl glass px-3 py-2 text-sm text-slate-400" x-text="$store.app.t('chat_typing')"></div>
                 </div>
             </div>
-        </div>
 
-        <form id="chat-form" class="border-t border-slate-200 p-3 flex gap-2 flex-shrink-0">
-            <input
-                id="chat-input"
-                type="text"
-                placeholder="שאל שאלה..."
-                autocomplete="off"
-                class="flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-            <button
-                id="chat-submit"
-                type="submit"
-                aria-label="שלח"
-                class="w-10 h-10 flex-shrink-0 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition disabled:opacity-50"
-            >
-                ➤
-            </button>
-        </form>
+            <form @submit.prevent="send()" class="border-t border-white/10 p-3 flex gap-2 flex-shrink-0">
+                <input
+                    x-ref="chatInput"
+                    x-model="input"
+                    :disabled="sending"
+                    type="text"
+                    :placeholder="$store.app.t('chat_input_placeholder')"
+                    autocomplete="off"
+                    class="flex-1 rounded-full bg-white/5 border border-white/10 text-slate-100 placeholder-slate-500 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+                >
+                <button
+                    type="submit"
+                    :disabled="sending || !input.trim()"
+                    :aria-label="$store.app.t('chat_send_aria')"
+                    class="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-white flex items-center justify-center transition disabled:opacity-50"
+                >
+                    ➤
+                </button>
+            </form>
+        </div>
     </div>
 
-    <script>
-        const SAFEBILL_USER_ID = {{ user_id }};
-        const CHAT_ENDPOINT = "/api/chat";
-
-        const chatToggle = document.getElementById('chat-toggle');
-        const chatPanel = document.getElementById('chat-panel');
-        const chatClose = document.getElementById('chat-close');
-        const chatForm = document.getElementById('chat-form');
-        const chatInput = document.getElementById('chat-input');
-        const chatSubmit = document.getElementById('chat-submit');
-        const chatMessages = document.getElementById('chat-messages');
-
-        chatToggle.addEventListener('click', () => {
-            chatPanel.classList.toggle('hidden');
-            if (!chatPanel.classList.contains('hidden')) chatInput.focus();
-        });
-        chatClose.addEventListener('click', () => chatPanel.classList.add('hidden'));
-
-        function appendMessage(text, sender) {
-            const row = document.createElement('div');
-            // "start" (right, in this RTL page) for the user's own
-            // messages, "end" (left) for the agent - matching common
-            // Hebrew chat-app convention of keeping your own messages on
-            // the right regardless of the agent's replies.
-            row.className = sender === 'user' ? 'flex justify-start' : 'flex justify-end';
-
-            const bubble = document.createElement('div');
-            bubble.className = sender === 'user'
-                ? 'max-w-[85%] rounded-2xl bg-indigo-600 text-white px-3 py-2 text-sm'
-                : 'max-w-[85%] rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700';
-            // textContent, never innerHTML: the agent's reply is
-            // LLM-generated text rendered straight into the DOM. innerHTML
-            // here would be a real XSS opening if that text ever
-            // contained markup; textContent escapes it unconditionally.
-            bubble.textContent = text;
-
-            row.appendChild(bubble);
-            chatMessages.appendChild(row);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function setTyping(visible) {
-            let indicator = document.getElementById('chat-typing');
-            if (visible) {
-                if (indicator) return;
-                indicator = document.createElement('div');
-                indicator.id = 'chat-typing';
-                indicator.className = 'flex justify-end';
-                const bubble = document.createElement('div');
-                bubble.className = 'rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-400';
-                bubble.textContent = 'כותב...';
-                indicator.appendChild(bubble);
-                chatMessages.appendChild(indicator);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            } else if (indicator) {
-                indicator.remove();
-            }
-        }
-
-        let isSending = false;
-
-        chatForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            if (isSending) return;
-
-            const text = chatInput.value.trim();
-            if (!text) return;
-
-            isSending = true;
-            chatInput.disabled = true;
-            chatSubmit.disabled = true;
-            appendMessage(text, 'user');
-            chatInput.value = '';
-            setTyping(true);
-
-            try {
-                const response = await fetch(CHAT_ENDPOINT, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: SAFEBILL_USER_ID, message: text }),
-                });
-
-                if (!response.ok) {
-                    let detail = 'שגיאה בתקשורת עם הסוכן.';
-                    try {
-                        const errBody = await response.json();
-                        detail = errBody.detail || detail;
-                    } catch (parseError) {
-                        // body wasn't JSON - keep the generic message
-                    }
-                    appendMessage(detail, 'agent');
-                } else {
-                    const data = await response.json();
-                    appendMessage(data.reply || 'מצטער, לא הצלחתי לענות על זה.', 'agent');
-                }
-            } catch (networkError) {
-                appendMessage('לא הצלחתי להתחבר לשרת.', 'agent');
-            } finally {
-                setTyping(false);
-                isSending = false;
-                chatInput.disabled = false;
-                chatSubmit.disabled = false;
-                chatInput.focus();
-            }
-        });
-    </script>
+    <script src="/static/js/dashboard.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </body>
 </html>

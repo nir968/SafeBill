@@ -52,7 +52,7 @@ class Bill(Base):
     # currency at all. See app/vision.py::VisionSanitizerService.
     currency: Mapped[str] = mapped_column(String(3), default="ILS", server_default="ILS")
     # One of the three Hebrew labels the Vision AI classifies the bill
-    # into (see app/vision.py::_ALLOWED_CATEGORIES), or null when the
+    # into (see app/vision.py::ALLOWED_CATEGORIES), or null when the
     # model couldn't confidently classify it - there's no default here on
     # purpose, unlike currency's ILS fallback; see the note in
     # VisionSanitizerService.extract_bill_fields.

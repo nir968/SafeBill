@@ -1,11 +1,14 @@
 import csv
 import io
 from contextlib import asynccontextmanager
+from datetime import date
 from decimal import Decimal
 
 from arq import create_pool
 from arq.connections import RedisSettings
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from sqlalchemy import func, select
 # Every route in this file depends on get_db(), which yields an
 # AsyncSession (see app/db.py) - never sqlalchemy.orm.Session, and never
@@ -20,6 +23,7 @@ from app.crud import get_or_create_user
 from app.db import Base, engine, get_db
 from app.models import Bill
 from app.routers import sanitizer, web
+from app.vision import ALLOWED_CATEGORIES
 
 
 @asynccontextmanager
@@ -36,6 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SafeBill", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(sanitizer.router)
 app.include_router(web.router)
 
@@ -199,6 +204,151 @@ async def update_bill_amount(
     await db.commit()
     await db.refresh(bill)
     return _serialize_bill(bill)
+
+
+class BillUpdateRequest(BaseModel):
+    institution: str
+    amount: Decimal
+    currency: str
+    due_date: date | None = None
+    status: str
+    category: str | None = None
+
+
+class BillCreateRequest(BaseModel):
+    institution: str
+    amount: Decimal
+    currency: str = "ILS"
+    due_date: date | None = None
+    status: str = "pending_analysis"
+    category: str | None = None
+
+
+# Every status this app's code ever assigns a bill (Sanitizer, Analyst
+# Agent, /pay, and now this endpoint) - kept as an allow-list rather than
+# accepting any string, since worker.py's due-alert and pending-bill
+# queries key off exact status values (e.g. `!= "paid"`); a typo'd status
+# here wouldn't error, it would just silently stop matching those filters.
+_EDITABLE_STATUSES = {"pending_analysis", "analyzed", "paid", "extraction_failed"}
+
+# Matches the dashboard's currency <select> exactly (institution/amount/
+# currency/due_date/category/status all edit together in one form - see
+# app/templates/dashboard.html's edit modal) - not the vision pipeline's
+# own defensive ILS fallback in app/vision.py, which exists precisely
+# because a model's free-text currency guess can't be constrained this
+# way before it's even seen.
+_ALLOWED_CURRENCIES = {"ILS", "USD", "EUR", "GBP"}
+
+
+def _validate_bill_payload(
+    institution: str, amount: Decimal, currency: str, status: str, category: str | None
+) -> str:
+    """Shared by POST /bills and PATCH /bills/{id} - same five fields, same
+    rules, one place to keep them in sync. Returns the trimmed institution."""
+    institution = institution.strip()
+    if not institution:
+        raise HTTPException(400, "Institution is required")
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    if currency not in _ALLOWED_CURRENCIES:
+        raise HTTPException(400, f"Invalid currency: {currency}")
+    if status not in _EDITABLE_STATUSES:
+        raise HTTPException(400, f"Invalid status: {status}")
+    if category is not None and category not in ALLOWED_CATEGORIES:
+        raise HTTPException(400, f"Invalid category: {category}")
+    return institution
+
+
+@app.post("/bills", status_code=201)
+async def create_bill(
+    request: Request, user_id: int, payload: BillCreateRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Manual Add fallback - creates a bill directly from typed-in fields,
+    entirely bypassing the vision pipeline (no image involved at all).
+    Exists for two cases: the AI scanner is temporarily unavailable (see
+    the dashboard's upload-error messaging), or a bill simply has no
+    photo/PDF to scan in the first place (a cash payment, a phone bill
+    read over the phone, etc).
+
+    Enqueues the same analyze_bill job POST /bills/upload does on a
+    successful scan - a manually-entered amount is just as real as an
+    AI-extracted one for InstitutionStats' rolling anomaly baseline, so
+    there's no reason to skip anomaly detection for it.
+    """
+    institution = _validate_bill_payload(
+        payload.institution, payload.amount, payload.currency, payload.status, payload.category
+    )
+
+    await get_or_create_user(db, user_id)
+
+    bill = Bill(
+        user_id=user_id,
+        institution=institution,
+        amount=payload.amount,
+        currency=payload.currency,
+        due_date=payload.due_date,
+        status=payload.status,
+        category=payload.category,
+    )
+    db.add(bill)
+    await db.commit()
+    await db.refresh(bill)
+
+    redis = request.app.state.redis
+    await redis.enqueue_job("analyze_bill", bill.id)
+
+    return _serialize_bill(bill)
+
+
+@app.patch("/bills/{bill_id}")
+async def update_bill(
+    bill_id: int, user_id: int, payload: BillUpdateRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Manual edit, entirely independent of the vision/Analyst pipeline - the
+    one place a human can correct institution/amount/currency/due_date/
+    status/category directly. In particular, this is how an
+    "extraction_failed" placeholder bill (see POST /bills/upload) gets
+    fixed: fill in the real fields by hand and change status away from
+    extraction_failed.
+
+    Whole-object replace of these six fields, not a sparse partial patch
+    - the dashboard's edit modal always submits the full form together, so
+    there's no real "was this field provided at all" case to support, and
+    supporting one for a single form-driven caller would only add
+    Optional[Optional[...]] sentinel complexity for no actual benefit.
+    """
+    institution = _validate_bill_payload(
+        payload.institution, payload.amount, payload.currency, payload.status, payload.category
+    )
+
+    bill = await _get_owned_bill(db, bill_id, user_id)
+    bill.institution = institution
+    bill.amount = payload.amount
+    bill.currency = payload.currency
+    bill.due_date = payload.due_date
+    bill.status = payload.status
+    bill.category = payload.category
+    await db.commit()
+    await db.refresh(bill)
+    return _serialize_bill(bill)
+
+
+@app.delete("/bills/{bill_id}")
+async def delete_bill(bill_id: int, user_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Permanent, not a soft-delete/status flip - matches DELETE /bills/last's
+    existing semantics. Doesn't touch InstitutionStats' rolling Welford
+    baseline, same documented limitation as PUT /bills/{id}/amount above:
+    "uncounting" a point from Welford's algorithm is real complexity this
+    endpoint doesn't need just to delete a row.
+    """
+    bill = await _get_owned_bill(db, bill_id, user_id)
+    deleted = _serialize_bill(bill)
+    await db.delete(bill)
+    await db.commit()
+    return {"status": "deleted", "id": deleted["id"], "institution": deleted["institution"]}
 
 
 @app.get("/bills/export")

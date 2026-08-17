@@ -1,0 +1,133 @@
+/* SafeBill dashboard - dark glass theme.
+   Layered on top of Tailwind's Play CDN utilities (dashboard.html still
+   uses Tailwind classes for layout/spacing) - this file only holds what
+   the CDN build can't express: page-level background, glass surfaces,
+   and Alpine's x-cloak contract. No @apply here - the Play CDN has no
+   build step to process it. */
+
+:root {
+    --sb-glass: rgba(255, 255, 255, 0.04);
+    --sb-glass-strong: rgba(255, 255, 255, 0.07);
+    --sb-border: rgba(255, 255, 255, 0.08);
+    --sb-border-strong: rgba(255, 255, 255, 0.16);
+}
+
+html {
+    color-scheme: dark;
+}
+
+/* Alpine only hides [x-cloak] elements once it boots and evaluates
+   x-show; without this rule, anything that starts closed (the chat
+   panel) would flash open for a frame on every page load. */
+[x-cloak] {
+    display: none !important;
+}
+
+body {
+    min-height: 100vh;
+    color: #e2e8f0;
+    background-color: #0a0b12;
+    background-image:
+        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, 0.20), transparent 40%),
+        radial-gradient(circle at 88% 0%, rgba(236, 72, 153, 0.16), transparent 42%),
+        radial-gradient(circle at 50% 100%, rgba(139, 92, 246, 0.14), transparent 55%);
+    background-attachment: fixed;
+}
+
+::selection {
+    background: rgba(129, 140, 248, 0.35);
+    color: #fff;
+}
+
+/* Glassmorphism building blocks, reused across cards, the header, the
+   table container, and the chat panel instead of repeating the same
+   long utility chain in every one of them. */
+.glass {
+    background: var(--sb-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--sb-border);
+}
+
+.glass-card {
+    background: var(--sb-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--sb-border);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    transition: border-color 0.2s ease;
+}
+
+.glass-card:hover {
+    border-color: var(--sb-border-strong);
+}
+
+.glass-strong {
+    background: var(--sb-glass-strong);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--sb-border);
+}
+
+/* Gentle entrance for the main sections on load */
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fade-in-up 0.5s ease both;
+}
+
+/* Native <select> dropdown popups are rendered by the OS/browser in a
+   separate layer outside normal page compositing - Tailwind utility
+   classes on <option> (translucent backgrounds, arbitrary-value classes
+   like bg-[#161324]) are unreliable there across browsers/environments,
+   and the Play CDN injects its generated stylesheet at an unpredictable
+   point in <head>, so nothing can safely depend on winning the cascade by
+   source order alone. Plain CSS with !important is the deliberate, narrow
+   fix for this specific native-widget rendering path - not a pattern used
+   anywhere else in this file. color-scheme on html (above) already nudges
+   browsers toward a dark popup by default, but doesn't guarantee this
+   exact palette, hence the explicit rule. */
+select option {
+    background-color: #161324 !important;
+    color: #e2e8f0 !important;
+}
+
+/* Tailwind's focus:outline-none compiles to `outline: 2px solid
+   transparent`, not a true `outline: none` - some browsers still render a
+   native focus glow on <select> specifically despite that. This only
+   targets `outline`, never `box-shadow`, so the indigo focus ring the
+   dashboard's own focus:ring-* classes apply (implemented as a box-shadow)
+   is untouched. */
+select:focus,
+select:focus-visible {
+    outline: none !important;
+}
+
+/* Chat message list scrollbar - the default browser scrollbar reads as
+   stark white noise against a dark glass panel */
+.chat-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.chat-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+}

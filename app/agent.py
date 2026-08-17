@@ -43,7 +43,7 @@ _SEARCH_BILLS_TOOL = {
                 "type": "string",
                 "description": (
                     "Free text to search for - an institution name, or an "
-                    'exact category (e.g. "הוצאה קבועה") or status '
+                    'exact category (e.g. "קנסות ודוחות") or status '
                     '(e.g. "paid", "analyzed") value.'
                 ),
             }

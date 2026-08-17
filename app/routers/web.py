@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent import AgentError, ask_agent
 from app.db import get_db
 from app.models import Bill
+from app.vision import TICKET_CATEGORY
 
 router = APIRouter(tags=["web"])
 
@@ -58,7 +59,15 @@ async def dashboard(request: Request, user_id: int, db: AsyncSession = Depends(g
     # anything real.
     pending_result = await db.execute(
         select(Bill.currency, func.count(Bill.id), func.sum(Bill.amount))
-        .where(Bill.user_id == user_id, Bill.status != "paid")
+        .where(
+            Bill.user_id == user_id,
+            Bill.status != "paid",
+            # A placeholder bill (vision extraction was unavailable at
+            # upload time - see POST /bills/upload) isn't a real pending
+            # charge, just an unresolved $0 row - counting it here would
+            # inflate "pending" with something that was never a debt.
+            Bill.status != "extraction_failed",
+        )
         .group_by(Bill.currency)
     )
     pending_by_currency = [
@@ -67,10 +76,32 @@ async def dashboard(request: Request, user_id: int, db: AsyncSession = Depends(g
     ]
     pending_count = sum(row["count"] for row in pending_by_currency)
 
-    recent_result = await db.execute(
-        select(Bill).where(Bill.user_id == user_id).order_by(Bill.id.desc()).limit(25)
+    # Two independent "most recent 25" queries, not one shared query split
+    # in Python - a user with many tickets and few regular bills (or vice
+    # versa) would otherwise have one table starved by the other eating
+    # most of a single combined 25-row budget.
+    regular_result = await db.execute(
+        select(Bill)
+        .where(
+            Bill.user_id == user_id,
+            # `!=` alone would silently drop every bill with category IS
+            # NULL - SQL's `NULL != x` evaluates to NULL/unknown, which
+            # WHERE treats as "exclude", not "include". is_distinct_from
+            # treats NULL correctly: not a ticket, so it belongs here.
+            Bill.category.is_distinct_from(TICKET_CATEGORY),
+        )
+        .order_by(Bill.id.desc())
+        .limit(25)
     )
-    recent_bills = recent_result.scalars().all()
+    regular_bills = regular_result.scalars().all()
+
+    ticket_result = await db.execute(
+        select(Bill)
+        .where(Bill.user_id == user_id, Bill.category == TICKET_CATEGORY)
+        .order_by(Bill.id.desc())
+        .limit(25)
+    )
+    ticket_bills = ticket_result.scalars().all()
 
     return templates.TemplateResponse(
         request=request,
@@ -79,7 +110,8 @@ async def dashboard(request: Request, user_id: int, db: AsyncSession = Depends(g
             "user_id": user_id,
             "pending_count": pending_count,
             "pending_by_currency": pending_by_currency,
-            "bills": recent_bills,
+            "regular_bills": regular_bills,
+            "ticket_bills": ticket_bills,
         },
     )
 

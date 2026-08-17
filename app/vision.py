@@ -99,13 +99,75 @@ def _rasterize_pdf_first_page(pdf_bytes: bytes) -> bytes:
             document.close()
 
 
-_FIXED_EXPENSE_CATEGORY = "הוצאה קבועה"
-_VARIABLE_EXPENSE_CATEGORY = "הוצאה משתנה"
-_FINE_CATEGORY = "קנס/דוח"
-# Single source of truth for both the prompt text below and the
-# defensive validation in VisionSanitizerService - the two can't drift
-# out of sync with each other.
-_ALLOWED_CATEGORIES = {_FIXED_EXPENSE_CATEGORY, _VARIABLE_EXPENSE_CATEGORY, _FINE_CATEGORY}
+_CATEGORY_ELECTRICITY = "חשמל"
+_CATEGORY_WATER = "מים"
+_CATEGORY_ARNONA_TAXES = "ארנונה ומיסים"
+_CATEGORY_COMMUNICATION = "תקשורת ואינטרנט"
+_CATEGORY_GAS = "גז"
+_CATEGORY_INSURANCE = "ביטוחים"
+_CATEGORY_CAR_TRANSPORT = "רכב ותחבורה"
+# Public (no leading underscore) - app/routers/web.py's dashboard route
+# imports this exact value to split a user's bills into the "tickets" and
+# "regular" tables, so that split can't drift from what the vision
+# pipeline (or a manual edit via PATCH /bills/{id}) actually assigns.
+TICKET_CATEGORY = "קנסות ודוחות"
+_CATEGORY_SERVICES_SUBSCRIPTIONS = "שירותים ומנויים"
+_CATEGORY_GENERAL = "הוצאה כללית"
+
+# (label, English gloss, example items) for each allowed category, in the
+# exact order presented to the model below - single source of truth for
+# both the classification prompt and ALLOWED_CATEGORIES, so a category
+# added or reworded here can't drift out of sync between the two the way
+# two independently hand-maintained lists eventually would.
+_CATEGORIES: list[tuple[str, str, str]] = [
+    (_CATEGORY_ELECTRICITY, "Electricity", "electric utility bills"),
+    (_CATEGORY_WATER, "Water", "water utility bills"),
+    (
+        _CATEGORY_ARNONA_TAXES,
+        "Arnona & Taxes",
+        "municipal property tax (arnona), other government/municipal taxes",
+    ),
+    (
+        _CATEGORY_COMMUNICATION,
+        "Communication & Internet",
+        "mobile phone, landline, internet, TV/cable subscriptions",
+    ),
+    (_CATEGORY_GAS, "Gas", "gas utility bills"),
+    (
+        _CATEGORY_INSURANCE,
+        "Insurances",
+        "insurance premiums of any kind - health, car, home, life, travel",
+    ),
+    (
+        _CATEGORY_CAR_TRANSPORT,
+        "Car & Transportation",
+        "fuel, parking fees, car maintenance or repairs, public transit, tolls",
+    ),
+    (
+        TICKET_CATEGORY,
+        "Fines & Tickets",
+        "parking tickets, speeding or traffic tickets, police reports, other "
+        "government-issued penalties",
+    ),
+    (
+        _CATEGORY_SERVICES_SUBSCRIPTIONS,
+        "Services & Subscriptions",
+        "streaming/software subscriptions, gym memberships, professional "
+        "services, rent, loan or mortgage payments",
+    ),
+    (
+        _CATEGORY_GENERAL,
+        "General Expense",
+        "supermarkets, retail stores, restaurants, cafes, one-off purchases, "
+        "or anything that genuinely doesn't fit the categories above",
+    ),
+]
+
+ALLOWED_CATEGORIES = {label for label, _gloss, _examples in _CATEGORIES}
+
+_CATEGORY_RULES = "\n".join(
+    f'  - "{label}" ({gloss}): {examples}.' for label, gloss, examples in _CATEGORIES
+)
 
 
 _SYSTEM_PROMPT = f"""You are an expert financial-document data-extraction system. You are shown a single image and must extract structured bill data from it - nothing else.
@@ -115,11 +177,9 @@ Rules:
 - "institution" is the biller issuing the bill (the utility, bank, or service provider) - not the recipient.
 - "amount" is the total amount due, as a plain number with no currency symbol or thousands separator.
 - "currency" is the ISO 4217 three-letter currency code for the amount (e.g. "ILS", "USD", "EUR", "GBP"). Infer it from any symbol or code shown on the bill: ₪ -> ILS, $ -> USD, € -> EUR, £ -> GBP. If a symbol could mean more than one currency and no other context narrows it down, use the most common association (e.g. plain "$" -> USD). If no currency is shown anywhere on the bill, use "ILS".
-- "category" classifies what the bill is for, as exactly one of these three Hebrew labels:
-  - "{_FIXED_EXPENSE_CATEGORY}" (fixed/recurring expense): utilities (electricity, water, gas), municipal taxes, internet/phone/TV subscriptions, insurance premiums, rent, loan or mortgage payments.
-  - "{_VARIABLE_EXPENSE_CATEGORY}" (variable/discretionary expense): supermarkets, retail stores, restaurants, cafes, one-off purchases.
-  - "{_FINE_CATEGORY}" (fine/ticket): parking tickets, speeding or traffic tickets, police reports, other government-issued penalties.
-  If the bill doesn't clearly fit any of the three, or you are not confident, return null rather than guessing.
+- "category" classifies what the bill is for, as exactly one of these ten Hebrew labels:
+{_CATEGORY_RULES}
+  Use "{_CATEGORY_GENERAL}" for a genuine one-off or miscellaneous expense that isn't covered by the other nine - it is not a "none of the above" fallback for uncertainty. Return null only when you are not confident enough to classify the bill at all.
 - "due_date" is the payment due date in YYYY-MM-DD format. If no due date is visible, return null - never invent one or substitute today's date.
 - Set "document_type" to "bill" only when the image clearly shows a bill, invoice, or statement with an amount owed.
 - Set "document_type" to "not_a_bill" when the image shows something else entirely.
@@ -140,8 +200,8 @@ class _BillExtractionResult(BaseModel):
     discriminator that lets the shared post-processing step fail fast on
     bad images without any adapter needing to know about the others.
 
-    `category` is typed as a plain `str | None`, not `Literal[*_ALLOWED_
-    CATEGORIES] | None`, even though only three values are ever valid -
+    `category` is typed as a plain `str | None`, not `Literal[*ALLOWED_
+    CATEGORIES] | None`, even though only ten values are ever valid -
     see VisionSanitizerService.extract_bill_fields for why: a Literal
     would make Ollama (no server-side schema enforcement, unlike
     Anthropic/Gemini) hard-fail the *entire* extraction over a bad
@@ -392,11 +452,11 @@ class VisionSanitizerService:
             currency = "ILS"
 
         # Unlike currency, there's no safe universal default to fall back
-        # to here - forcing an uncertain bill into one of the three
+        # to here - forcing an uncertain bill into one of the ten
         # buckets would systematically bias the data, so an out-of-set or
         # missing value just becomes None (a fully successful save, only
         # without a category) rather than a guess or a failure.
-        category = result.category if result.category in _ALLOWED_CATEGORIES else None
+        category = result.category if result.category in ALLOWED_CATEGORIES else None
 
         return ExtractedBill(
             institution=result.institution,
