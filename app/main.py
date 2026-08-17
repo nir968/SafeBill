@@ -22,7 +22,7 @@ from app.config import settings
 from app.crud import get_or_create_user
 from app.db import Base, engine, get_db
 from app.models import Bill
-from app.routers import sanitizer, web
+from app.routers import auth, sanitizer, web
 from app.vision import ALLOWED_CATEGORIES
 
 
@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SafeBill", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(auth.router)
 app.include_router(sanitizer.router)
 app.include_router(web.router)
 

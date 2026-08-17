@@ -12,3 +12,10 @@ google-genai>=2.3.0
 pypdfium2>=4.30.0
 Pillow>=10.0.0
 jinja2>=3.1.0
+passlib[bcrypt]==1.7.4
+# Pinned alongside passlib, not left to float - passlib 1.7.4's bcrypt
+# handler probes bcrypt.__about__.__version__, which bcrypt>=4.1 removed,
+# so an unpinned bcrypt install here breaks password hashing entirely with
+# an AttributeError at first use, not at install time.
+bcrypt==4.0.1
+PyJWT==2.9.0

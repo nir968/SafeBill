@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -30,8 +30,24 @@ class User(Base):
     # since the app always provides this value explicitly (see
     # app/crud.py::get_or_create_user).
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    telegram_chat_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable as of the email/password signup path (see app/routers/
+    # auth.py::signup) - a web-only account has no Telegram identity at
+    # all. worker.py's alert delivery (analyze_bill, enforce_due_alerts)
+    # checks for None here before calling send_anomaly_alert/
+    # send_bill_reminder, rather than sending a garbage chat id to
+    # Telegram's API on every anomaly/reminder for these users.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Both nullable: every existing row got here through the Telegram bot
+    # alone and has neither. They're populated only if/when a user sets up
+    # direct web login for their existing (Telegram-identified) account -
+    # this is additive, not a replacement identity, so id keeps meaning
+    # "the Telegram user id" exactly as before; nothing that already reads
+    # or writes it changes.
+    email: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
+    hashed_password: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    bills: Mapped[list["Bill"]] = relationship(back_populates="user")
 
 
 class Bill(Base):
@@ -41,6 +57,7 @@ class Bill(Base):
     # BigInteger to match User.id's type exactly - a FK column narrower
     # than the column it references is a real (if quiet) foot-gun.
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    user: Mapped["User"] = relationship(back_populates="bills")
 
     # Only the three fields the Sanitizer is allowed to keep. The source
     # image never reaches this table, or any table.

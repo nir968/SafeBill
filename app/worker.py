@@ -115,6 +115,16 @@ async def analyze_bill(ctx, bill_id: int) -> None:
             user = await db.get(User, bill.user_id)
             if user is None:
                 logger.warning("analyze_bill: bill %s has no matching user %s", bill.id, bill.user_id)
+            elif user.telegram_chat_id is None:
+                # Web-only account (signed up via email/password, never
+                # linked Telegram) - nothing to deliver to, and calling
+                # send_anomaly_alert with None would just fail against
+                # Telegram's API instead of skipping cleanly.
+                logger.info(
+                    "analyze_bill: bill %s is anomalous but user %s has no Telegram chat to alert",
+                    bill.id,
+                    bill.user_id,
+                )
             else:
                 try:
                     await send_anomaly_alert(user.telegram_chat_id, bill)
@@ -168,6 +178,13 @@ async def enforce_due_alerts(ctx) -> None:
             for bill in due_bills:
                 user = await db.get(User, bill.user_id)
                 if user is None:
+                    continue
+                if user.telegram_chat_id is None:
+                    # Web-only account, nothing to deliver to. Deliberately
+                    # not touching alert_sent_at/alert_attempts - this was
+                    # never a real delivery attempt, so it shouldn't count
+                    # as one or eventually get dead-lettered; the bill just
+                    # gets re-claimed (cheaply) on the next run instead.
                     continue
                 try:
                     await send_bill_reminder(user.telegram_chat_id, bill)

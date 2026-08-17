@@ -21,6 +21,15 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = "mock-token"
 
+    # No default on purpose - a JWT signing secret must never ship with a
+    # guessable fallback baked into source control. Missing this now makes
+    # the whole app fail to start (a clear pydantic-settings validation
+    # error) instead of silently signing every session token with a
+    # well-known value. Set via SECRET_KEY in .env - e.g.
+    # `python -c "import secrets; print(secrets.token_hex(32))"`.
+    secret_key: str
+    access_token_expire_minutes: int = 60 * 24 * 14  # 14 days
+
     vision_provider: Literal["anthropic", "ollama", "gemini"] = "gemini"
     # Only read if vision_provider is ever set to "ollama" - app/vision.py's
     # get_vision_provider() still has a live OllamaVisionProvider branch, so
