@@ -213,6 +213,7 @@ class BillUpdateRequest(BaseModel):
     due_date: date | None = None
     status: str
     category: str | None = None
+    asmachta: str | None = None
 
 
 class BillCreateRequest(BaseModel):
@@ -222,6 +223,7 @@ class BillCreateRequest(BaseModel):
     due_date: date | None = None
     status: str = "pending_analysis"
     category: str | None = None
+    asmachta: str | None = None
 
 
 # Every status this app's code ever assigns a bill (Sanitizer, Analyst
@@ -290,6 +292,7 @@ async def create_bill(
         due_date=payload.due_date,
         status=payload.status,
         category=payload.category,
+        asmachta=payload.asmachta,
     )
     db.add(bill)
     await db.commit()
@@ -308,12 +311,12 @@ async def update_bill(
     """
     Manual edit, entirely independent of the vision/Analyst pipeline - the
     one place a human can correct institution/amount/currency/due_date/
-    status/category directly. In particular, this is how an
+    status/category/asmachta directly. In particular, this is how an
     "extraction_failed" placeholder bill (see POST /bills/upload) gets
     fixed: fill in the real fields by hand and change status away from
     extraction_failed.
 
-    Whole-object replace of these six fields, not a sparse partial patch
+    Whole-object replace of these seven fields, not a sparse partial patch
     - the dashboard's edit modal always submits the full form together, so
     there's no real "was this field provided at all" case to support, and
     supporting one for a single form-driven caller would only add
@@ -330,6 +333,7 @@ async def update_bill(
     bill.due_date = payload.due_date
     bill.status = payload.status
     bill.category = payload.category
+    bill.asmachta = payload.asmachta
     await db.commit()
     await db.refresh(bill)
     return _serialize_bill(bill)

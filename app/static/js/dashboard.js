@@ -417,6 +417,7 @@ document.addEventListener('alpine:init', () => {
             due_date: '',
             status: 'pending_analysis',
             category: '',
+            asmachta: '',
         },
 
         // buttonEl is the clicked pencil-icon <button>, whose data-*
@@ -437,6 +438,7 @@ document.addEventListener('alpine:init', () => {
                 due_date: d.dueDate || '',
                 status: d.status,
                 category: d.category || '',
+                asmachta: d.asmachta || '',
             };
             this.errorMessage = null;
             this.open = true;
@@ -456,6 +458,7 @@ document.addEventListener('alpine:init', () => {
                 due_date: '',
                 status: 'pending_analysis',
                 category: '',
+                asmachta: '',
             };
             this.errorMessage = null;
             this.open = true;
@@ -508,6 +511,7 @@ document.addEventListener('alpine:init', () => {
                         due_date: this.form.due_date || null,
                         status: this.form.status,
                         category: this.form.category || null,
+                        asmachta: this.form.asmachta || null,
                     }),
                 });
 

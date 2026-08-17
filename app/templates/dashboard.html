@@ -396,6 +396,7 @@
                                     data-due-date="{{ bill.due_date.isoformat() if bill.due_date else '' }}"
                                     data-status="{{ bill.status }}"
                                     data-category="{{ bill.category or '' }}"
+                                    data-asmachta="{{ bill.asmachta or '' }}"
                                     :aria-label="$store.app.t('edit_bill')"
                                     class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-white/5 transition"
                                 >
@@ -564,6 +565,15 @@
                             <option value="paid" x-text="$store.app.t('status_paid')">שולם</option>
                             <option value="extraction_failed" x-text="$store.app.t('status_extraction_failed')">נדרש עדכון ידני</option>
                         </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_reference')"></label>
+                        <input
+                            x-model="form.asmachta"
+                            type="text"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
                     </div>
 
                     <p x-show="errorMessage" x-cloak class="text-rose-300 text-sm" x-text="errorMessage"></p>
