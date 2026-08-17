@@ -35,6 +35,18 @@
             >
                 <span x-text="$store.app.t('about_link')"></span>
             </button>
+            <!-- Own tiny x-data rather than a method on aboutModal() -
+                 that component is scoped to "about modal open/closed
+                 state", and logout isn't that, even though it's the
+                 nearest existing component in the DOM. -->
+            <button
+                type="button"
+                x-data="logoutButton()"
+                @click="logout()"
+                class="text-sm text-slate-300 hover:text-white transition"
+            >
+                <span x-text="$store.app.t('logout')"></span>
+            </button>
         </div>
     </header>
 

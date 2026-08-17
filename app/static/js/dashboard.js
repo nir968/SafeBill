@@ -43,6 +43,7 @@ document.addEventListener('alpine:init', () => {
                 page_title: 'לוח הבקרה - SafeBill',
                 dashboard_subtitle: 'לוח בקרה חכם',
                 about_link: 'אודות',
+                logout: 'התנתקות',
 
                 about_title: 'אודות SafeBill',
                 about_body:
@@ -164,6 +165,7 @@ document.addEventListener('alpine:init', () => {
                 page_title: 'Dashboard - SafeBill',
                 dashboard_subtitle: 'Smart Dashboard',
                 about_link: 'About',
+                logout: 'Log Out',
 
                 about_title: 'About SafeBill',
                 about_body:
@@ -708,6 +710,20 @@ document.addEventListener('alpine:init', () => {
 
     Alpine.data('aboutModal', () => ({
         open: false,
+    }));
+
+    Alpine.data('logoutButton', () => ({
+        async logout() {
+            // Best-effort - even if this fails (network hiccup, already
+            // logged out elsewhere), redirecting to /login is still the
+            // right outcome, so there's no error branch to show the user.
+            try {
+                await fetch('/auth/logout', { method: 'POST' });
+            } catch (networkError) {
+                // ignored - see comment above
+            }
+            window.location.href = '/login';
+        },
     }));
 
     Alpine.data('onboarding', () => ({

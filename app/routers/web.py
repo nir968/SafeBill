@@ -8,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import AgentError, ask_agent
+from app.auth import get_current_user_for_page
 from app.db import get_db
-from app.models import Bill
+from app.models import Bill, User
 from app.vision import TICKET_CATEGORY
 
 router = APIRouter(tags=["web"])
@@ -39,21 +40,41 @@ def _format_money(amount, currency: str) -> str:
 templates.env.filters["money"] = _format_money
 
 
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html", context={})
+
+
+@router.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    return templates.TemplateResponse(request=request, name="signup.html", context={})
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, user_id: int, db: AsyncSession = Depends(get_db)):
+async def dashboard(
+    request: Request,
+    current_user: User = Depends(get_current_user_for_page),
+    db: AsyncSession = Depends(get_db),
+):
     """
-    No authentication - user_id is a plain, unauthenticated query
-    parameter, exactly like every other GET endpoint in this app
-    (/bills/recent, /bills/pending, etc.). That convention is fine for a
-    bot-driven API where the caller is trusted backend code, but this is
-    a browser-facing page: anyone who has or guesses a user's Telegram id
-    can view their full bill and spending history at this URL with no
-    login prompt. Telegram ids aren't small sequential integers the way
-    the old bill_id IDOR issue was, but they also aren't a secret. Real
-    auth (a login flow, a signed per-user link, etc.) is a separate piece
-    of work - flagging the gap rather than quietly shipping a page that
-    looks secured and isn't.
+    Cookie-authenticated as of app/auth.py::get_current_user_for_page -
+    previously took user_id as a plain, unauthenticated query parameter
+    (see git history), which let anyone who had or guessed a user's
+    Telegram id view their full bill and spending history with no login
+    prompt at all. An unauthenticated visitor gets redirected to /login
+    rather than a bare 401, since this route renders a full page for
+    direct browser navigation, not a fetch() call client-side JS could
+    otherwise react to.
+
+    main.py's bill CRUD routes, sanitizer.py's upload route, and
+    POST /api/chat below are deliberately NOT migrated to this - they're
+    called by telegram_bot.py as a trusted server-to-server caller with a
+    Telegram-verified id and no browser session to present, so requiring
+    a cookie there would break the bot. That's a real gap, not an
+    oversight - see app/routers/auth.py's module docstring.
     """
+    user_id = current_user.id
+
     # Per-currency, not a single blended sum - same reasoning as
     # /bills/stats: a $50 bill and a ₪50 bill do not add up to "100" of
     # anything real.
@@ -134,16 +155,20 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)) -> Chat
     it's a deliberately separate deployable process with no dependency on
     the app package.
 
-    Same unauthenticated-user_id caveat as GET /dashboard, but sharper
-    here: this endpoint answers arbitrary natural-language questions
-    using another user's real financial data if you pass their id, and
-    every call - even a question the tools can't help with - spends real
-    Anthropic API budget. GET /dashboard is a read-only page for a chosen
-    id; this is an interactive, costed surface with no rate limiting and
-    no check that the caller is who they claim to be. Shipping it exactly
-    as specified, matching this app's established no-auth-yet posture,
-    but flagging it more forcefully than the dashboard's version of the
-    same gap given the added cost-abuse angle.
+    Still on the unauthenticated user_id parameter GET /dashboard just
+    moved off of - deliberately, not an oversight: unlike the dashboard,
+    this route is also called directly by telegram_bot.py as a trusted
+    server-to-server caller with no browser session to present, so it
+    can't take a cookie-based dependency the way GET /dashboard now does
+    without breaking the bot (see app/routers/auth.py's module docstring).
+    That leaves this the sharper case of the same gap: it answers
+    arbitrary natural-language questions using another user's real
+    financial data if you pass their id, and every call - even a question
+    the tools can't help with - spends real Anthropic API budget, with no
+    rate limiting and no check that the caller is who they claim to be.
+    Needs its own fix (e.g. a shared service-level API key the bot
+    presents, checked here alongside/instead of a user cookie), not a
+    reflexive swap to get_current_user.
     """
     message = payload.message.strip()
     if not message:

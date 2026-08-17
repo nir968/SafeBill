@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>התחברות - SafeBill</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<!-- No Alpine.js here on purpose - this page is one form with one error
+     message to show/hide, nowhere near enough interactivity to justify
+     loading a whole reactivity framework the way dashboard.html's much
+     larger surface does. Plain vanilla JS below instead. -->
+<body class="min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-sm">
+        <div class="flex flex-col items-center gap-3 mb-6">
+            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center">
+                <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
+                    <path d="m9 12 2 2 4-4" />
+                </svg>
+            </div>
+            <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
+        </div>
+
+        <div class="glass-strong rounded-2xl shadow-2xl p-6 space-y-4">
+            <h2 class="text-lg font-semibold text-slate-100 text-center">התחברות</h2>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">אימייל</label>
+                    <input
+                        id="email"
+                        type="email"
+                        required
+                        autocomplete="email"
+                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">סיסמה</label>
+                    <input
+                        id="password"
+                        type="password"
+                        required
+                        autocomplete="current-password"
+                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                </div>
+
+                <p id="error-message" class="text-rose-300 text-sm hidden"></p>
+
+                <button
+                    type="submit"
+                    id="submit-button"
+                    class="w-full rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium py-2.5 shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                >
+                    התחברות
+                </button>
+            </form>
+
+            <p class="text-center text-sm text-slate-400">
+                אין לך חשבון?
+                <a href="/signup" class="text-indigo-300 hover:text-indigo-200">הרשמה</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const errorMessage = document.getElementById('error-message');
+        const submitButton = document.getElementById('submit-button');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            errorMessage.classList.add('hidden');
+            submitButton.disabled = true;
+            submitButton.textContent = 'מתחבר...';
+
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        password: document.getElementById('password').value,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const data = await response.json().catch(() => null);
+                    errorMessage.textContent = (data && data.detail) || 'ההתחברות נכשלה.';
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
+
+                // Full navigation, not a client-side route change - the
+                // access_token cookie POST /auth/login just set needs to
+                // actually be attached to the next request, and GET
+                // /dashboard reads identity from that cookie now, not
+                // from a user_id this page has no business constructing.
+                window.location.href = '/dashboard';
+            } catch (networkError) {
+                errorMessage.textContent = 'לא הצלחתי להתחבר לשרת.';
+                errorMessage.classList.remove('hidden');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'התחברות';
+            }
+        });
+    </script>
+</body>
+</html>
