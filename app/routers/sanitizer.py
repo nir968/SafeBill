@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import get_authorized_user_id
 from app.config import settings
 from app.crud import get_or_create_user
 from app.db import get_db
@@ -32,7 +33,11 @@ _extraction_semaphore = asyncio.Semaphore(settings.max_concurrent_extractions)
 
 
 @router.post("/upload", status_code=202)
-async def upload_bill(request: Request, user_id: int, db: AsyncSession = Depends(get_db)):
+async def upload_bill(
+    request: Request,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Hot path. Deliberately NOT using FastAPI's `UploadFile` / multipart form
     parsing — Starlette's multipart parser spools any part over ~1MB to a

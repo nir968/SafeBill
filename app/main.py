@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models  # noqa: F401 -- registers tables on Base.metadata
+from app.auth import get_authorized_user_id
 from app.config import settings
 from app.crud import get_or_create_user
 from app.db import Base, engine, get_db
@@ -52,7 +53,9 @@ async def health():
 
 
 @app.get("/bills/recent")
-async def get_recent_bills(user_id: int, db: AsyncSession = Depends(get_db)):
+async def get_recent_bills(
+    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     await get_or_create_user(db, user_id)
 
     result = await db.execute(
@@ -72,7 +75,9 @@ async def get_recent_bills(user_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/bills/stats")
-async def get_stats(user_id: int, db: AsyncSession = Depends(get_db)):
+async def get_stats(
+    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     """
     Returns a per-currency breakdown, not a single blended total - once
     bills can be in different currencies, summing them into one number
@@ -109,7 +114,9 @@ def _serialize_bill(bill: Bill) -> dict:
 
 
 @app.get("/bills/search")
-async def search_bills(user_id: int, query: str, db: AsyncSession = Depends(get_db)):
+async def search_bills(
+    query: str, user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     """Filters by institution name, case-insensitive substring match."""
     result = await db.execute(
         select(Bill)
@@ -120,7 +127,9 @@ async def search_bills(user_id: int, query: str, db: AsyncSession = Depends(get_
 
 
 @app.get("/bills/pending")
-async def get_pending_bills(user_id: int, db: AsyncSession = Depends(get_db)):
+async def get_pending_bills(
+    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     """
     "Pending" currently means status != "paid" - as specified. Worth
     knowing: nothing in this codebase ever sets a bill's status to "paid"
@@ -141,7 +150,9 @@ async def get_pending_bills(user_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.delete("/bills/last")
-async def delete_last_bill(user_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_last_bill(
+    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(
         select(Bill).where(Bill.user_id == user_id).order_by(Bill.id.desc()).limit(1)
     )
@@ -174,7 +185,10 @@ async def _get_owned_bill(db: AsyncSession, bill_id: int, user_id: int) -> Bill:
 
 @app.put("/bills/{bill_id}/pay")
 async def pay_bill(
-    bill_id: int, user_id: int, asmachta: str | None = None, db: AsyncSession = Depends(get_db)
+    bill_id: int,
+    asmachta: str | None = None,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     bill = await _get_owned_bill(db, bill_id, user_id)
     bill.status = "paid"
@@ -186,7 +200,10 @@ async def pay_bill(
 
 @app.put("/bills/{bill_id}/amount")
 async def update_bill_amount(
-    bill_id: int, user_id: int, new_amount: Decimal, db: AsyncSession = Depends(get_db)
+    bill_id: int,
+    new_amount: Decimal,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Note: this does not retroactively correct InstitutionStats' rolling
@@ -264,7 +281,10 @@ def _validate_bill_payload(
 
 @app.post("/bills", status_code=201)
 async def create_bill(
-    request: Request, user_id: int, payload: BillCreateRequest, db: AsyncSession = Depends(get_db)
+    request: Request,
+    payload: BillCreateRequest,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Manual Add fallback - creates a bill directly from typed-in fields,
@@ -307,7 +327,10 @@ async def create_bill(
 
 @app.patch("/bills/{bill_id}")
 async def update_bill(
-    bill_id: int, user_id: int, payload: BillUpdateRequest, db: AsyncSession = Depends(get_db)
+    bill_id: int,
+    payload: BillUpdateRequest,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Manual edit, entirely independent of the vision/Analyst pipeline - the
@@ -341,7 +364,9 @@ async def update_bill(
 
 
 @app.delete("/bills/{bill_id}")
-async def delete_bill(bill_id: int, user_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_bill(
+    bill_id: int, user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     """
     Permanent, not a soft-delete/status flip - matches DELETE /bills/last's
     existing semantics. Doesn't touch InstitutionStats' rolling Welford
@@ -357,7 +382,9 @@ async def delete_bill(bill_id: int, user_id: int, db: AsyncSession = Depends(get
 
 
 @app.get("/bills/export")
-async def export_bills(user_id: int, db: AsyncSession = Depends(get_db)):
+async def export_bills(
+    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(
         select(Bill).where(Bill.user_id == user_id).order_by(Bill.id.desc())
     )

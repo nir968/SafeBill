@@ -7,7 +7,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
-<body data-user-id="{{ user_id }}" x-data="aboutModal()" :dir="$store.app.lang === 'he' ? 'rtl' : 'ltr'">
+<!-- select-none here, same rule as login.html/signup.html - user-select
+     is inherited and never reaches into a native <input>/<textarea>'s own
+     editable text regardless of what's set on an ancestor, so cascading
+     it from <body> is safe for every real form field on this page and is
+     the only way to be sure no heading/label/static string (like
+     upload_section_title) was missed. Genuinely copyable data - bill
+     amounts, reference numbers, chat messages, error text - is opted
+     back into select-text individually below, the same pattern used for
+     login/signup's error message. -->
+<body data-user-id="{{ user_id }}" x-data="aboutModal()" :dir="$store.app.lang === 'he' ? 'rtl' : 'ltr'" class="select-none">
+
+    <a href="#main-content" class="skip-link select-text" x-text="$store.app.t('skip_to_content')">דלג לתוכן הראשי</a>
 
     <header class="glass-strong sticky top-0 z-40">
         <div class="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
@@ -173,7 +184,7 @@
         </div>
     </div>
 
-    <main class="max-w-6xl mx-auto px-6 py-8 space-y-8 isolate" x-data="billEditor()" @keydown.escape.window="open && close()">
+    <main id="main-content" tabindex="-1" class="max-w-6xl mx-auto px-6 py-8 space-y-8 isolate" x-data="billEditor()" @keydown.escape.window="open && close()">
 
         <section class="animate-fade-in-up" x-data="billUpload()">
             <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('upload_section_title')"></h2>
@@ -182,6 +193,7 @@
                 role="button"
                 tabindex="0"
                 :aria-label="$store.app.t('upload_zone_aria')"
+                :aria-busy="uploading"
                 @click="!uploading && $refs.fileInput.click()"
                 @keydown.enter.prevent="!uploading && $refs.fileInput.click()"
                 @keydown.space.prevent="!uploading && $refs.fileInput.click()"
@@ -214,8 +226,8 @@
                 <template x-if="!uploading && result && result.extracted">
                     <div class="flex flex-col items-center gap-2 py-2">
                         <p class="text-3xl">✅</p>
-                        <p class="text-slate-100 font-medium" x-text="result.institution"></p>
-                        <p class="text-2xl font-bold bg-gradient-to-r from-amber-300 to-pink-400 bg-clip-text text-transparent" x-text="formatMoney(result.amount, result.currency)"></p>
+                        <p class="text-slate-100 font-medium select-text" x-text="result.institution"></p>
+                        <p class="text-2xl font-bold bg-gradient-to-r from-amber-300 to-pink-400 bg-clip-text text-transparent select-text" x-text="formatMoney(result.amount, result.currency)"></p>
                         <p class="text-xs text-slate-500 mt-1" x-text="$store.app.t('upload_success_saved')"></p>
                     </div>
                 </template>
@@ -237,7 +249,7 @@
                 <template x-if="!uploading && !result && errorMessage">
                     <div class="flex flex-col items-center gap-2 py-2">
                         <p class="text-3xl">⚠️</p>
-                        <p class="text-rose-300 text-sm" x-text="errorMessage"></p>
+                        <p class="text-rose-300 text-sm select-text" x-text="errorMessage"></p>
                         <template x-if="scanUnavailable">
                             <!-- openCreateModal() lives on billEditor() (the
                                  <main> ancestor's x-data), not this section's
@@ -347,11 +359,11 @@
                     <tbody class="divide-y divide-white/5">
                         {% for bill in bills %}
                         <tr class="hover:bg-white/5 transition">
-                            <td class="px-4 py-3 font-medium text-slate-100 whitespace-nowrap">{{ bill.institution }}</td>
-                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap">{{ bill.amount|money(bill.currency) }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-100 whitespace-nowrap select-text">{{ bill.institution }}</td>
+                            <td class="px-4 py-3 text-slate-300 whitespace-nowrap select-text">{{ bill.amount|money(bill.currency) }}</td>
                             <td class="px-4 py-3 text-slate-300 whitespace-nowrap">
                                 {% if bill.due_date %}
-                                    {{ bill.due_date.strftime('%d/%m/%Y') }}
+                                    <span class="select-text">{{ bill.due_date.strftime('%d/%m/%Y') }}</span>
                                 {% else %}
                                     <span class="text-slate-500" x-text="$store.app.t('unknown_date')"></span>
                                 {% endif %}
@@ -384,7 +396,7 @@
                             </td>
                             <td class="px-4 py-3 text-slate-300 whitespace-nowrap">
                                 {% if bill.asmachta %}
-                                    {{ bill.asmachta }}
+                                    <span class="select-text">{{ bill.asmachta }}</span>
                                 {% else %}
                                     <span class="text-slate-500">—</span>
                                 {% endif %}
@@ -429,13 +441,15 @@
                                     type="button"
                                     @click="quickPay({{ bill.id }})"
                                     :disabled="payingBillId === {{ bill.id }}"
+                                    :aria-busy="payingBillId === {{ bill.id }}"
                                     :aria-label="$store.app.t('mark_paid_aria')"
                                     :title="$store.app.t('mark_paid_aria')"
                                     class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 transition"
                                 >
-                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <svg x-show="payingBillId !== {{ bill.id }}" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M20 6 9 17l-5-5" />
                                     </svg>
+                                    <span x-show="payingBillId === {{ bill.id }}" x-cloak class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" aria-hidden="true"></span>
                                 </button>
                                 {% else %}
                                 <span class="text-slate-600">—</span>
@@ -491,8 +505,12 @@
                             x-model="form.institution"
                             type="text"
                             required
+                            maxlength="200"
+                            :aria-invalid="!!fieldErrors.institution"
+                            :class="fieldErrors.institution ? 'ring-2 ring-rose-400/60' : ''"
                             class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         >
+                        <p x-show="fieldErrors.institution" x-cloak class="mt-1 text-xs text-rose-300 select-text" x-text="fieldErrors.institution"></p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3">
@@ -504,8 +522,11 @@
                                 step="0.01"
                                 min="0.01"
                                 required
+                                :aria-invalid="!!fieldErrors.amount"
+                                :class="fieldErrors.amount ? 'ring-2 ring-rose-400/60' : ''"
                                 class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                             >
+                            <p x-show="fieldErrors.amount" x-cloak class="mt-1 text-xs text-rose-300 select-text" x-text="fieldErrors.amount"></p>
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('field_currency')"></label>
@@ -584,11 +605,12 @@
                         <input
                             x-model="form.asmachta"
                             type="text"
+                            maxlength="100"
                             class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         >
                     </div>
 
-                    <p x-show="errorMessage" x-cloak class="text-rose-300 text-sm" x-text="errorMessage"></p>
+                    <p x-show="errorMessage" x-cloak class="text-rose-300 text-sm select-text" x-text="errorMessage"></p>
 
                     <div class="flex gap-2 justify-between pt-2">
                         <button
@@ -596,8 +618,10 @@
                             x-show="form.id"
                             @click="deleteBill()"
                             :disabled="saving || deleting"
-                            class="px-4 py-2 rounded-full text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 transition"
+                            :aria-busy="deleting"
+                            class="px-4 py-2 rounded-full text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 transition inline-flex items-center justify-center gap-2"
                         >
+                            <span x-show="deleting" x-cloak class="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" aria-hidden="true"></span>
                             <span x-text="deleting ? $store.app.t('deleting') : $store.app.t('delete')">מחק</span>
                         </button>
                         <div x-show="!form.id" class="flex-1"></div>
@@ -606,8 +630,10 @@
                             <button
                                 type="submit"
                                 :disabled="saving || deleting"
-                                class="px-5 py-2 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                                :aria-busy="saving"
+                                class="px-5 py-2 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium shadow-lg shadow-purple-500/30 disabled:opacity-50 transition inline-flex items-center justify-center gap-2"
                             >
+                                <span x-show="saving" x-cloak class="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" aria-hidden="true"></span>
                                 <span x-text="saving ? $store.app.t('saving') : (form.id ? $store.app.t('save') : $store.app.t('add'))">שמירה</span>
                             </button>
                         </div>
@@ -636,7 +662,7 @@
             type="button"
             :aria-label="$store.app.t('chat_toggle_aria')"
             @click="toggle()"
-            class="fixed bottom-6 start-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 text-white flex items-center justify-center text-2xl transition hover:scale-105"
+            class="fixed bottom-24 start-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 text-white flex items-center justify-center text-2xl transition hover:scale-105"
         >
             💬
         </button>
@@ -650,7 +676,7 @@
             x-transition:leave="transition ease-in duration-150"
             x-transition:leave-start="opacity-100 translate-y-0"
             x-transition:leave-end="opacity-0 translate-y-2"
-            class="fixed bottom-24 start-6 z-50 w-80 sm:w-96 h-[28rem] glass-strong rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            class="fixed bottom-44 start-6 z-50 w-80 sm:w-96 h-[28rem] glass-strong rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         >
             <div class="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
                 <div>
@@ -669,9 +695,9 @@
                     <div :class="message.sender === 'user' ? 'flex justify-start' : 'flex justify-end'">
                         <div
                             x-text="message.text"
-                            :class="message.sender === 'user'
+                            :class="(message.sender === 'user'
                                 ? 'max-w-[85%] rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white px-3 py-2 text-sm'
-                                : 'max-w-[85%] rounded-2xl glass text-slate-200 px-3 py-2 text-sm'"
+                                : 'max-w-[85%] rounded-2xl glass text-slate-200 px-3 py-2 text-sm') + ' select-text'"
                         ></div>
                     </div>
                 </template>
@@ -681,12 +707,15 @@
                 </div>
             </div>
 
+            <p x-show="chatError" x-cloak class="text-rose-300 text-xs px-3 pt-2 select-text" x-text="chatError"></p>
+
             <form @submit.prevent="send()" class="border-t border-white/10 p-3 flex gap-2 flex-shrink-0">
                 <input
                     x-ref="chatInput"
                     x-model="input"
                     :disabled="sending"
                     type="text"
+                    maxlength="2000"
                     :placeholder="$store.app.t('chat_input_placeholder')"
                     autocomplete="off"
                     class="flex-1 rounded-full bg-white/5 border border-white/10 text-slate-100 placeholder-slate-500 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
@@ -694,14 +723,34 @@
                 <button
                     type="submit"
                     :disabled="sending || !input.trim()"
+                    :aria-busy="sending"
                     :aria-label="$store.app.t('chat_send_aria')"
                     class="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-white flex items-center justify-center transition disabled:opacity-50"
                 >
-                    ➤
+                    <span x-show="sending" x-cloak class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" aria-hidden="true"></span>
+                    <span x-show="!sending">➤</span>
                 </button>
             </form>
         </div>
     </div>
+
+    <!-- Third-party UserWay accessibility widget (replaces this app's
+         former custom-built accessibility widget). userway_account_id
+         comes from Settings (app/config.py) via GET /dashboard's own
+         template context (app/routers/web.py), never hardcoded here, and
+         is empty by default - in which case this script is skipped
+         entirely rather than attempting to load with an invalid account
+         id, which would just be a broken embed and a console error on
+         every environment that hasn't configured one yet. UserWay
+         controls its own launcher's DOM once it loads; the
+         #userway_p5_launcher_icon rule in dashboard.css is a best-effort
+         attempt to place it in the same corner as the chat button,
+         directly below it - verify visually once a real account id is
+         configured, since that DOM is entirely third-party and not
+         guaranteed by this app. -->
+    {% if userway_account_id %}
+    <script src="https://cdn.userway.org/widget.js" data-account="{{ userway_account_id }}"></script>
+    {% endif %}
 
     <script src="/static/js/dashboard.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>

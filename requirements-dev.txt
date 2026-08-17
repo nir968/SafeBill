@@ -1,0 +1,8 @@
+# Test-only dependencies, kept separate from requirements.txt on purpose -
+# same reasoning as requirements-bot.txt being its own file: the
+# production Docker image (see Dockerfile) only ever installs
+# requirements.txt, so pytest and friends never bloat what actually ships.
+-r requirements.txt
+
+pytest==8.3.3
+pytest-asyncio==0.24.0

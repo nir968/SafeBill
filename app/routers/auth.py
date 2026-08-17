@@ -24,6 +24,7 @@ query parameter. Two different stories apply when migrating them:
   reflexively just because get_current_user now exists.
 """
 
+import re
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -66,17 +67,59 @@ def _generate_web_user_id() -> int:
     return -secrets.randbits(62)
 
 
+def _validate_password_strength(password: str) -> None:
+    """Raises on the first unmet requirement, matching this app's
+    convention of surfacing exactly what's wrong rather than a generic
+    "invalid password". signup.html shows all five requirements as a live
+    checklist while typing and validates client-side before ever
+    submitting, so this is mainly a backstop against a raw API call (or
+    JS-disabled browser) bypassing that - not the primary place a real
+    user is expected to encounter these messages one at a time."""
+    if len(password) < _MIN_PASSWORD_LENGTH:
+        raise HTTPException(400, f"הסיסמה חייבת להכיל לפחות {_MIN_PASSWORD_LENGTH} תווים")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(400, "הסיסמה חייבת להכיל לפחות אות גדולה אחת (A-Z)")
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(400, "הסיסמה חייבת להכיל לפחות אות קטנה אחת (a-z)")
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(400, "הסיסמה חייבת להכיל לפחות ספרה אחת (0-9)")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        raise HTTPException(400, "הסיסמה חייבת להכיל לפחות תו מיוחד אחד (למשל !@#$%)")
+
+
+def _set_auth_cookie(response: Response, request: Request, user_id: int) -> None:
+    """Shared by signup and login - both end a successful request the same
+    way: a fresh session for user_id. Kept as one place so the cookie
+    flags (httponly/secure/samesite/max_age) can't drift between the two
+    call sites."""
+    token = create_access_token(user_id)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        # Inferred from the actual request instead of a static config
+        # flag - correct locally over plain http (a Secure cookie would
+        # otherwise silently never be stored by the browser at all) and
+        # correct again the moment this is served over https, with
+        # nothing to keep in sync between environments.
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+
+
 @router.post("/signup", status_code=201)
-async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup(
+    payload: SignupRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
     email = _normalize_email(payload.email)
     if "@" not in email or len(email) < 3:
-        raise HTTPException(400, "A valid email address is required")
-    if len(payload.password) < _MIN_PASSWORD_LENGTH:
-        raise HTTPException(400, f"Password must be at least {_MIN_PASSWORD_LENGTH} characters")
+        raise HTTPException(400, "כתובת אימייל תקינה היא שדה חובה")
+    _validate_password_strength(payload.password)
 
     existing = await db.execute(select(User.id).where(User.email == email).limit(1))
     if existing.scalar_one_or_none() is not None:
-        raise HTTPException(409, "An account with this email already exists")
+        raise HTTPException(409, "כבר קיים חשבון עם כתובת האימייל הזו")
 
     hashed = hash_password(payload.password)
 
@@ -99,7 +142,16 @@ async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
             await db.rollback()
             user = None
     if user is None:
-        raise HTTPException(500, "Could not create account, please try again")
+        raise HTTPException(500, "לא הצלחנו ליצור את החשבון, נסו שוב")
+
+    # Auto-login: signup.html shows a success message and redirects
+    # straight to /dashboard rather than back to /login, so the session
+    # needs to already exist by the time that redirect happens - a second,
+    # separate call to /login right after would work too, but adds a
+    # network round-trip and a real (if rare) failure mode where the
+    # account gets created but the follow-up login call fails, leaving a
+    # confused user looking logged-out on a page that told them otherwise.
+    _set_auth_cookie(response, request, user.id)
 
     return {"id": user.id, "email": user.email}
 
@@ -121,22 +173,9 @@ async def login(
     if user is None or user.hashed_password is None or not verify_password(
         payload.password, user.hashed_password
     ):
-        raise HTTPException(401, "Invalid email or password")
+        raise HTTPException(401, "אימייל או סיסמה שגויים")
 
-    token = create_access_token(user.id)
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        # Inferred from the actual request instead of a static config
-        # flag - correct locally over plain http (a Secure cookie would
-        # otherwise silently never be stored by the browser at all) and
-        # correct again the moment this is served over https, with
-        # nothing to keep in sync between environments.
-        secure=request.url.scheme == "https",
-        samesite="lax",
-        max_age=settings.access_token_expire_minutes * 60,
-    )
+    _set_auth_cookie(response, request, user.id)
     return {"id": user.id, "email": user.email}
 
 

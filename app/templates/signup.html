@@ -7,9 +7,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
-<!-- No Alpine.js here, same reasoning as login.html - one form, one
-     error message, not worth a whole reactivity framework. -->
-<body class="min-h-screen flex items-center justify-center px-4">
+<!-- No Alpine.js here, same reasoning as login.html - one form plus a
+     live password checklist is still bounded, straightforward DOM
+     updates, not enough to justify loading a whole reactivity framework
+     (dashboard.js pulls in a much larger, unrelated business-domain
+     component set besides). -->
+<!-- select-none on body, same as login.html - user-select is inherited
+     and never reaches into a native <input>'s own editable text, so this
+     is safe for every real form field and is the only way to be sure no
+     label/heading/container slips through. Error and success messages
+     are opted back into select-text below since those are the one thing
+     on this page worth letting someone select. -->
+<body class="min-h-screen flex items-center justify-center px-4 py-10 select-none">
     <div class="w-full max-w-sm">
         <div class="flex flex-col items-center gap-3 mb-6">
             <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center">
@@ -19,6 +28,33 @@
                 </svg>
             </div>
             <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
+        </div>
+
+        <!-- Static value-proposition panel, not an interactive modal like
+             the dashboard's onboarding tutorial - a signup page is a
+             conversion-critical moment someone's already committed to
+             ("I clicked sign up"), so this stays out of the way as
+             always-visible context instead of blocking the form with a
+             multi-step walkthrough. Same icons as the real in-app
+             onboarding (📤/🤖 - see the onboarding_step1/2 keys in
+             dashboard.js) on purpose, so what's promised here visibly
+             matches what a new user actually sees right after. -->
+        <div class="glass-card rounded-2xl p-5 mb-4 space-y-3">
+            <h2 class="text-sm font-semibold text-slate-200 text-center">מה מקבלים עם SafeBill?</h2>
+            <div class="space-y-2.5">
+                <div class="flex items-start gap-2.5">
+                    <span class="text-lg leading-none">📤</span>
+                    <p class="text-xs text-slate-400">העלאת חשבון בתמונה או PDF - בלי הקלדה ידנית</p>
+                </div>
+                <div class="flex items-start gap-2.5">
+                    <span class="text-lg leading-none">🤖</span>
+                    <p class="text-xs text-slate-400">בינה מלאכותית מזהה את הפרטים אוטומטית</p>
+                </div>
+                <div class="flex items-start gap-2.5">
+                    <span class="text-lg leading-none">💰</span>
+                    <p class="text-xs text-slate-400">כל החשבונות שלכם במקום אחד, בלי לפספס תשלום</p>
+                </div>
+            </div>
         </div>
 
         <div class="glass-strong rounded-2xl shadow-2xl p-6 space-y-4">
@@ -37,28 +73,68 @@
                 </div>
                 <div>
                     <label class="block text-xs text-slate-400 mb-1">סיסמה</label>
-                    <input
-                        id="password"
-                        type="password"
-                        required
-                        minlength="8"
-                        autocomplete="new-password"
-                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    >
-                    <p class="text-xs text-slate-500 mt-1">לפחות 8 תווים</p>
+                    <div class="relative">
+                        <input
+                            id="password"
+                            type="password"
+                            required
+                            minlength="8"
+                            autocomplete="new-password"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                        <button
+                            type="button"
+                            id="password-toggle"
+                            aria-label="הצג סיסמה"
+                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                        ></button>
+                    </div>
+                    <!-- Live checklist, not a single "password too weak"
+                         message - each requirement updates independently
+                         as the user types, matching exactly what the
+                         backend enforces (see _validate_password_strength
+                         in app/routers/auth.py) so nothing here can drift
+                         out of sync with what the server will actually
+                         accept. -->
+                    <ul id="password-requirements" class="mt-2 space-y-1 text-xs">
+                        <li data-req="length" class="flex items-center gap-1.5 text-slate-500">
+                            <span class="req-icon w-3 inline-block">○</span>לפחות 8 תווים
+                        </li>
+                        <li data-req="uppercase" class="flex items-center gap-1.5 text-slate-500">
+                            <span class="req-icon w-3 inline-block">○</span>אות גדולה (A-Z)
+                        </li>
+                        <li data-req="lowercase" class="flex items-center gap-1.5 text-slate-500">
+                            <span class="req-icon w-3 inline-block">○</span>אות קטנה (a-z)
+                        </li>
+                        <li data-req="number" class="flex items-center gap-1.5 text-slate-500">
+                            <span class="req-icon w-3 inline-block">○</span>ספרה (0-9)
+                        </li>
+                        <li data-req="special" class="flex items-center gap-1.5 text-slate-500">
+                            <span class="req-icon w-3 inline-block">○</span>תו מיוחד (!@#$% וכו')
+                        </li>
+                    </ul>
                 </div>
                 <div>
                     <label class="block text-xs text-slate-400 mb-1">אימות סיסמה</label>
-                    <input
-                        id="password-confirm"
-                        type="password"
-                        required
-                        autocomplete="new-password"
-                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    >
+                    <div class="relative">
+                        <input
+                            id="password-confirm"
+                            type="password"
+                            required
+                            autocomplete="new-password"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                        <button
+                            type="button"
+                            id="password-confirm-toggle"
+                            aria-label="הצג סיסמה"
+                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                        ></button>
+                    </div>
                 </div>
 
-                <p id="error-message" class="text-rose-300 text-sm hidden"></p>
+                <p id="error-message" class="text-rose-300 text-sm hidden select-text"></p>
+                <p id="success-message" class="text-emerald-300 text-sm hidden select-text"></p>
 
                 <button
                     type="submit"
@@ -76,27 +152,62 @@
         </div>
     </div>
 
+    <script src="/static/js/auth.js"></script>
     <script>
         const form = document.getElementById('signup-form');
         const errorMessage = document.getElementById('error-message');
+        const successMessage = document.getElementById('success-message');
         const submitButton = document.getElementById('submit-button');
+        const passwordInput = document.getElementById('password');
+
+        setupPasswordToggle('password', 'password-toggle');
+        setupPasswordToggle('password-confirm', 'password-confirm-toggle');
 
         function showError(text) {
             errorMessage.textContent = text;
             errorMessage.classList.remove('hidden');
         }
 
+        // Mirrors _validate_password_strength in app/routers/auth.py
+        // exactly - same five checks, same order - so the checklist here
+        // can never show "all requirements met" for a password the
+        // server would actually reject, or vice versa.
+        const passwordRequirements = {
+            length: (v) => v.length >= 8,
+            uppercase: (v) => /[A-Z]/.test(v),
+            lowercase: (v) => /[a-z]/.test(v),
+            number: (v) => /[0-9]/.test(v),
+            special: (v) => /[^A-Za-z0-9]/.test(v),
+        };
+
+        function updatePasswordChecklist() {
+            const value = passwordInput.value;
+            let allMet = true;
+            for (const [key, test] of Object.entries(passwordRequirements)) {
+                const met = test(value);
+                if (!met) allMet = false;
+                const item = document.querySelector(`[data-req="${key}"]`);
+                const icon = item.querySelector('.req-icon');
+                item.classList.toggle('text-emerald-300', met);
+                item.classList.toggle('text-slate-500', !met);
+                icon.textContent = met ? '✓' : '○';
+            }
+            return allMet;
+        }
+
+        passwordInput.addEventListener('input', updatePasswordChecklist);
+
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             errorMessage.classList.add('hidden');
 
-            const password = document.getElementById('password').value;
+            const password = passwordInput.value;
             const passwordConfirm = document.getElementById('password-confirm').value;
 
-            // Client-side only - a quick typo check, not the real
-            // validation. The server enforces the actual minimum length
-            // regardless (see _MIN_PASSWORD_LENGTH in app/routers/auth.py)
-            // and is the only check that matters for correctness here.
+            if (!updatePasswordChecklist()) {
+                showError('הסיסמה אינה עומדת בדרישות המפורטות למעלה.');
+                return;
+            }
             if (password !== passwordConfirm) {
                 showError('הסיסמאות אינן תואמות.');
                 return;
@@ -117,17 +228,27 @@
 
                 if (!response.ok) {
                     const data = await response.json().catch(() => null);
-                    showError((data && data.detail) || 'ההרשמה נכשלה.');
+                    showError(extractErrorMessage(data, 'ההרשמה נכשלה.'));
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'הרשמה';
                     return;
                 }
 
-                // Signup doesn't log the new account in on its own (see
-                // POST /auth/signup) - it only creates the row, so the
-                // next step is a normal login with the same credentials.
-                window.location.href = '/login';
+                // POST /auth/signup sets the session cookie itself now (see
+                // _set_auth_cookie in app/routers/auth.py), so there's no
+                // separate login step needed - just tell the user it
+                // worked and hand them off to /dashboard. The button is
+                // deliberately left disabled through this delay (no
+                // re-enable here, unlike the error branch above) since a
+                // second click has nothing useful left to do.
+                submitButton.textContent = 'הרשמה';
+                successMessage.textContent = 'נרשמת בהצלחה! מתחבר למערכת...';
+                successMessage.classList.remove('hidden');
+                window.setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 1200);
             } catch (networkError) {
                 showError('לא הצלחתי להתחבר לשרת.');
-            } finally {
                 submitButton.disabled = false;
                 submitButton.textContent = 'הרשמה';
             }

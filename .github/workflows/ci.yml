@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Matches the Dockerfile's python:3.12-slim - keeps CI testing
+          # the same interpreter version that actually ships.
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        # No DATABASE_URL/REDIS_URL/GEMINI_API_KEY set here on purpose -
+        # tests/conftest.py fills in throwaway values for everything
+        # app.config.Settings requires just to construct. Nothing in this
+        # suite opens a real DB/Redis connection or calls a real external
+        # API, so no service containers or secrets are needed to run it -
+        # see tests/conftest.py's own docstring for the exact reasoning.
+        run: pytest -v
+
+  docker-build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api/worker image via docker compose
+        # Validates the Dockerfile and docker-compose.yml together (both
+        # `api` and `worker` build from the same Dockerfile - Compose
+        # only builds it once). Build-only, not `up` - this only needs to
+        # prove the image compiles; actually starting the stack would
+        # need real Postgres/Redis/API-key secrets this job has no
+        # reason to depend on. Every ${VAR:-} in docker-compose.yml
+        # already has an empty-string fallback, so no env vars are
+        # needed here either.
+        run: docker compose build

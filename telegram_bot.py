@@ -1,5 +1,6 @@
 import io
 import os
+import sys
 
 import requests
 import telebot
@@ -18,6 +19,26 @@ BACKEND_TIMEOUT_SECONDS = 200
 # need BACKEND_TIMEOUT_SECONDS' generous headroom - a short, fail-fast
 # timeout is better UX for these.
 DB_QUERY_TIMEOUT_SECONDS = 15
+
+# Same value as Settings.internal_api_key on the backend (see
+# app/config.py) - proves to app/auth.py::get_authorized_user_id that this
+# process is the trusted bot, entitled to act on behalf of whichever
+# user_id it supplies (already Telegram-verified via message.from_user.id
+# below, not user input this script itself trusts blindly). Every backend
+# call in this file goes through the `backend` session below instead of
+# the bare `requests` module specifically so this header is never
+# forgotten on a future new call site - see get_authorized_user_id's own
+# docstring for what happens on the backend if it's missing or wrong
+# (401, same as no credential at all).
+INTERNAL_API_KEY = os.getenv('INTERNAL_API_KEY')
+if not INTERNAL_API_KEY:
+    sys.exit(
+        "INTERNAL_API_KEY is not set - every backend call in this bot would get a 401. "
+        "Set it in .env to the same value as the backend's INTERNAL_API_KEY."
+    )
+
+backend = requests.Session()
+backend.headers.update({'X-Internal-Api-Key': INTERNAL_API_KEY})
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -126,7 +147,7 @@ def handle_last_bills(message):
     bot.reply_to(message, "שולף נתונים... ⏳")
     try:
         url = f"{BACKEND_URL}/bills/recent?user_id={message.from_user.id}"
-        response = requests.get(url, timeout=BACKEND_TIMEOUT_SECONDS)
+        response = backend.get(url, timeout=BACKEND_TIMEOUT_SECONDS)
 
         if response.ok:
             bills = response.json()
@@ -151,7 +172,7 @@ def handle_stats(message):
     bot.reply_to(message, "מחשב סיכום חודשי... 🧮")
     try:
         url = f"{BACKEND_URL}/bills/stats?user_id={message.from_user.id}"
-        response = requests.get(url, timeout=BACKEND_TIMEOUT_SECONDS)
+        response = backend.get(url, timeout=BACKEND_TIMEOUT_SECONDS)
 
         if response.ok:
             data = response.json()
@@ -198,7 +219,7 @@ def _process_bill_upload(message, file_id: str) -> None:
 
     url = f"{BACKEND_URL}/bills/upload?user_id={message.from_user.id}"
     try:
-        response = requests.post(
+        response = backend.post(
             url,
             headers={'Content-Type': 'application/octet-stream'},
             data=file_bytes,
@@ -263,7 +284,7 @@ def handle_search(message):
     user_id = message.from_user.id
 
     try:
-        response = requests.get(
+        response = backend.get(
             f"{BACKEND_URL}/bills/search",
             params={"user_id": user_id, "query": query},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -294,7 +315,7 @@ def handle_pending(message):
     user_id = message.from_user.id
 
     try:
-        response = requests.get(
+        response = backend.get(
             f"{BACKEND_URL}/bills/pending",
             params={"user_id": user_id},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -327,7 +348,7 @@ def handle_delete_last(message):
     user_id = message.from_user.id
 
     try:
-        response = requests.delete(
+        response = backend.delete(
             f"{BACKEND_URL}/bills/last",
             params={"user_id": user_id},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -363,7 +384,7 @@ def handle_pay(message):
     user_id = message.from_user.id
 
     try:
-        response = requests.get(
+        response = backend.get(
             f"{BACKEND_URL}/bills/pending",
             params={"user_id": user_id},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -418,7 +439,7 @@ def process_asmachta_step(message, bill_id):
     user_id = message.from_user.id
 
     try:
-        response = requests.put(
+        response = backend.put(
             f"{BACKEND_URL}/bills/{bill_id}/pay",
             params={"user_id": user_id, "asmachta": asmachta},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -465,7 +486,7 @@ def handle_edit(message):
     user_id = message.from_user.id
 
     try:
-        response = requests.put(
+        response = backend.put(
             f"{BACKEND_URL}/bills/{bill_id}/amount",
             params={"user_id": user_id, "new_amount": new_amount},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -492,7 +513,7 @@ def handle_export(message):
     bot.reply_to(message, "מכין קובץ ייצוא... 📤")
 
     try:
-        response = requests.get(
+        response = backend.get(
             f"{BACKEND_URL}/bills/export",
             params={"user_id": user_id},
             timeout=DB_QUERY_TIMEOUT_SECONDS,
@@ -536,9 +557,10 @@ def handle_text_question(message):
     bot.send_chat_action(message.chat.id, 'typing')
 
     try:
-        response = requests.post(
+        response = backend.post(
             f"{BACKEND_URL}/api/chat",
-            json={"user_id": user_id, "message": text},
+            params={"user_id": user_id},
+            json={"message": text},
             # Generous, matching the upload timeout: a tool-use turn can
             # involve several Anthropic round trips (decide to call a
             # tool, run it, synthesize the answer), slower than the plain

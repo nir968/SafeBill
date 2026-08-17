@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import AgentError, ask_agent
-from app.auth import get_current_user_for_page
+from app.auth import get_authorized_user_id, get_current_user_for_page
+from app.config import settings
 from app.db import get_db
 from app.models import Bill, User
 from app.vision import TICKET_CATEGORY
@@ -67,11 +68,12 @@ async def dashboard(
     otherwise react to.
 
     main.py's bill CRUD routes, sanitizer.py's upload route, and
-    POST /api/chat below are deliberately NOT migrated to this - they're
-    called by telegram_bot.py as a trusted server-to-server caller with a
-    Telegram-verified id and no browser session to present, so requiring
-    a cookie there would break the bot. That's a real gap, not an
-    oversight - see app/routers/auth.py's module docstring.
+    POST /api/chat below all use get_authorized_user_id instead of this
+    dependency specifically - they're also called by telegram_bot.py as a
+    trusted server-to-server caller with a Telegram-verified id and no
+    browser session to present, so a cookie-only dependency would break
+    the bot. get_authorized_user_id (app/auth.py) covers both: a browser
+    session's own id, or a bot request carrying the internal API key.
     """
     user_id = current_user.id
 
@@ -133,12 +135,12 @@ async def dashboard(
             "pending_by_currency": pending_by_currency,
             "regular_bills": regular_bills,
             "ticket_bills": ticket_bills,
+            "userway_account_id": settings.userway_account_id,
         },
     )
 
 
 class ChatRequest(BaseModel):
-    user_id: int
     message: str
 
 
@@ -147,7 +149,11 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/api/chat", tags=["chat"])
-async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)) -> ChatResponse:
+async def chat(
+    payload: ChatRequest,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> ChatResponse:
     """
     Backs both the dashboard's chat widget and telegram_bot.py's text-
     message handler - the bot calls this exact endpoint over HTTP rather
@@ -155,27 +161,22 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)) -> Chat
     it's a deliberately separate deployable process with no dependency on
     the app package.
 
-    Still on the unauthenticated user_id parameter GET /dashboard just
-    moved off of - deliberately, not an oversight: unlike the dashboard,
-    this route is also called directly by telegram_bot.py as a trusted
-    server-to-server caller with no browser session to present, so it
-    can't take a cookie-based dependency the way GET /dashboard now does
-    without breaking the bot (see app/routers/auth.py's module docstring).
-    That leaves this the sharper case of the same gap: it answers
-    arbitrary natural-language questions using another user's real
-    financial data if you pass their id, and every call - even a question
-    the tools can't help with - spends real Anthropic API budget, with no
-    rate limiting and no check that the caller is who they claim to be.
-    Needs its own fix (e.g. a shared service-level API key the bot
-    presents, checked here alongside/instead of a user cookie), not a
-    reflexive swap to get_current_user.
+    user_id now comes from get_authorized_user_id (app/auth.py), not the
+    request body - previously ChatRequest.user_id was trusted outright,
+    which meant anyone could answer arbitrary natural-language questions
+    using another user's real financial data just by passing their id,
+    spending real Anthropic API budget on someone else's behalf with no
+    check that the caller was who they claimed to be. A browser session's
+    own cookie-derived id is authoritative now; telegram_bot.py
+    authenticates via the X-Internal-Api-Key header instead and passes
+    user_id as a query parameter (see telegram_bot.py's handle_text_question).
     """
     message = payload.message.strip()
     if not message:
         raise HTTPException(400, "Empty message")
 
     try:
-        reply = await ask_agent(db, payload.user_id, message)
+        reply = await ask_agent(db, user_id, message)
     except AgentError as exc:
         raise HTTPException(502, str(exc))
 

@@ -10,8 +10,17 @@
 <!-- No Alpine.js here on purpose - this page is one form with one error
      message to show/hide, nowhere near enough interactivity to justify
      loading a whole reactivity framework the way dashboard.html's much
-     larger surface does. Plain vanilla JS below instead. -->
-<body class="min-h-screen flex items-center justify-center px-4">
+     larger surface does. Plain vanilla JS below instead (shared bits with
+     signup.html live in /static/js/auth.js). -->
+<!-- select-none here, not chased down per-element - user-select is an
+     inherited CSS property, and doesn't affect a native <input>'s own
+     editable text regardless of what's set on an ancestor, so cascading
+     it from <body> is both safe for the actual form fields and the only
+     way to be sure no label/heading/container was missed (which is
+     exactly how a real one - the "סיסמה" label - got through before).
+     Explicitly opted back in below for the one thing worth letting
+     someone select: the error message itself. -->
+<body class="min-h-screen flex items-center justify-center px-4 select-none">
     <div class="w-full max-w-sm">
         <div class="flex flex-col items-center gap-3 mb-6">
             <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center">
@@ -39,16 +48,24 @@
                 </div>
                 <div>
                     <label class="block text-xs text-slate-400 mb-1">סיסמה</label>
-                    <input
-                        id="password"
-                        type="password"
-                        required
-                        autocomplete="current-password"
-                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    >
+                    <div class="relative">
+                        <input
+                            id="password"
+                            type="password"
+                            required
+                            autocomplete="current-password"
+                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                        <button
+                            type="button"
+                            id="password-toggle"
+                            aria-label="הצג סיסמה"
+                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                        ></button>
+                    </div>
                 </div>
 
-                <p id="error-message" class="text-rose-300 text-sm hidden"></p>
+                <p id="error-message" class="text-rose-300 text-sm hidden select-text"></p>
 
                 <button
                     type="submit"
@@ -66,10 +83,13 @@
         </div>
     </div>
 
+    <script src="/static/js/auth.js"></script>
     <script>
         const form = document.getElementById('login-form');
         const errorMessage = document.getElementById('error-message');
         const submitButton = document.getElementById('submit-button');
+
+        setupPasswordToggle('password', 'password-toggle');
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -89,8 +109,10 @@
 
                 if (!response.ok) {
                     const data = await response.json().catch(() => null);
-                    errorMessage.textContent = (data && data.detail) || 'ההתחברות נכשלה.';
+                    errorMessage.textContent = extractErrorMessage(data, 'ההתחברות נכשלה.');
                     errorMessage.classList.remove('hidden');
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'התחברות';
                     return;
                 }
 
@@ -103,7 +125,6 @@
             } catch (networkError) {
                 errorMessage.textContent = 'לא הצלחתי להתחבר לשרת.';
                 errorMessage.classList.remove('hidden');
-            } finally {
                 submitButton.disabled = false;
                 submitButton.textContent = 'התחברות';
             }

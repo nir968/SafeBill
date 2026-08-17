@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     secret_key: str
     access_token_expire_minutes: int = 60 * 24 * 14  # 14 days
 
+    # No default, same reasoning as secret_key above - this is the shared
+    # secret telegram_bot.py presents (as the X-Internal-Api-Key header,
+    # see app/auth.py::get_authorized_user_id) to prove it's the trusted
+    # bot process entitled to act on behalf of whichever user_id it
+    # supplies, rather than an arbitrary caller impersonating any user it
+    # likes. A guessable/missing default would silently defeat the entire
+    # point of that check, so this fails the app at startup instead - the
+    # same tradeoff already made for secret_key. Set via INTERNAL_API_KEY
+    # in .env - e.g. `python -c "import secrets; print(secrets.token_hex(32))"`.
+    internal_api_key: str
+
     vision_provider: Literal["anthropic", "ollama", "gemini"] = "gemini"
     # Only read if vision_provider is ever set to "ollama" - app/vision.py's
     # get_vision_provider() still has a live OllamaVisionProvider branch, so
@@ -43,6 +54,17 @@ class Settings(BaseSettings):
     # selection or answer quality degrades, split this back out to a Pro
     # model first.
     gemini_agent_model: str = "gemini-3.6-flash"
+
+    # Empty by default, not a hard-required field like secret_key above -
+    # this isn't a secret (it's visible in every page's rendered HTML
+    # source regardless), just an opt-in third-party embed. Empty means
+    # "widget disabled"; GET /dashboard's template only emits the
+    # <script data-account=...> tag when this is set (see
+    # app/routers/web.py), so a deployment that hasn't signed up for a
+    # UserWay account yet doesn't ship a broken embed. Set via
+    # USERWAY_ACCOUNT_ID in .env - the account id comes from UserWay's own
+    # dashboard after creating a (free) account for this site's domain.
+    userway_account_id: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

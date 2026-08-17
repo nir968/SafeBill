@@ -131,3 +131,80 @@ select:focus-visible {
     background: rgba(255, 255, 255, 0.18);
     border-radius: 999px;
 }
+
+/* Accessibility ------------------------------------------------------- */
+
+/* Visible only once focused (Tab from the top of the page) - a standard
+   pattern for keyboard users to jump past the header straight to <main>
+   without needing to hear/tab through every header control first. Hidden
+   the rest of the time via a large negative offset rather than
+   display:none, which would remove it from the tab order entirely. */
+.skip-link {
+    position: absolute;
+    top: -3rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #4f46e5;
+    color: #fff;
+    padding: 0.6rem 1.25rem;
+    border-radius: 0 0 0.75rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 100;
+    transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* Positioning override for the third-party UserWay accessibility widget
+   (see the conditional <script data-account> embed in dashboard.html).
+   Verified against UserWay's actual shipped bundle/stylesheet (not just
+   guessed) - their launcher renders as
+   `.uwy > .userway_buttons_wrapper > (.uai | .ulsti)`, and UserWay
+   positions it via a `userway_pN` modifier class on the root `.uwy`
+   element: p1-p8 map to top/middle/bottom x right/center/left corners
+   (p3 specifically is their own "bottom right" variant). This account's
+   dashboard is apparently configured for a different corner (p1, top
+   right - matching what was actually observed), which is the real root
+   cause, not a broken selector - the fix belongs in two places:
+     1. UserWay's own dashboard (Widget Customization > Position) should
+        be set to bottom-right so this override becomes unnecessary and
+        stays correct across their own future layout changes.
+     2. This rule forces it regardless, using UserWay's own p3 technique
+        (`left: calc(100vw - 21px)` + `translate(-100%)`, not plain
+        `right:`) so it still lands flush against the physical right
+        edge - deliberately mirrored rather than simplified, since that's
+        the exact approach UserWay tested across browsers themselves.
+   Still not a guarantee: this is UserWay's current DOM, not a documented
+   public contract, and could change in a future widget release without
+   notice - if the icon ever drifts again, re-verify against whatever
+   bundle is then being served rather than assume this rule is still
+   accurate. bottom: 1.5rem (not UserWay's own default 13px) matches this
+   app's own spacing scale, landing the widget directly under the chat
+   button (which sits at bottom-24/6rem, 3.5rem tall). */
+.uwy .userway_buttons_wrapper {
+    top: auto !important;
+    bottom: 1.5rem !important;
+    left: calc(100vw - 21px) !important;
+    right: auto !important;
+    transform: translate(-100%) !important;
+    justify-content: flex-end !important;
+}
+
+/* Keyboard-navigation safety net: every interactive element gets a
+   visible focus ring, not just the ones that already happen to carry an
+   explicit focus:ring-* utility (inputs/selects do; plain icon buttons
+   like the table's edit/quick-pay actions previously didn't). Excludes
+   <select>, which keeps its own box-shadow ring further up this file -
+   this rule would otherwise stack a second, redundant outline on top of
+   it. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid #818cf8;
+    outline-offset: 2px;
+}

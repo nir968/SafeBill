@@ -11,6 +11,15 @@
 // but this file is served as a static asset, never through Jinja - so the
 // value crosses the boundary via a data-* attribute on <body> rather than
 // being templated directly into this .js file.
+//
+// NOT sent to the backend as a `user_id` request parameter anywhere in
+// this file (see app/auth.py::get_authorized_user_id) - every /bills*,
+// /api/chat, etc. call below relies solely on the session cookie fetch()
+// already sends automatically for a same-origin request, since that's
+// the only value the backend actually trusts for a browser caller. This
+// constant now exists only to namespace this browser's own localStorage
+// keys (see chatWidget's _storageKey() below) - a purely client-side,
+// non-authoritative use, not a credential.
 const SAFEBILL_USER_ID = Number(document.body.dataset.userId);
 
 // Thin module-level wrapper around the Alpine.store('app') translation
@@ -47,10 +56,10 @@ document.addEventListener('alpine:init', () => {
 
                 about_title: 'אודות SafeBill',
                 about_body:
-                    'SafeBill היא יוזמה חכמה לניהול חשבונות, שפותחה כפרויקט מתקדם במדעי המחשב במכללה האקדמית למינהל (The College of Management Academic Studies). המערכת משלבת בינה מלאכותית לזיהוי וניתוח אוטומטי של חשבונות, לצד מעקב תשלומים ותובנות פיננסיות אישיות.',
+                    'SafeBill היא יוזמה חכמה לניהול חשבונות, שפותחה כפרויקט אישי בשילוב סוכנים חכמים (AI Agents). המערכת משלבת בינה מלאכותית לזיהוי וניתוח אוטומטי של חשבונות, לצד מעקב תשלומים ותובנות פיננסיות אישיות.',
                 privacy_title: 'פרטיות ואבטחה',
                 privacy_body_1:
-                    'תמונות וקבצי PDF של חשבונות אינן נשמרות לצמיתות בשרתי המערכת בשום שלב - הן מעובדות בזיכרון בלבד לצורך חילוץ הנתונים, ונמחקות מיידית עם סיום התהליך. רק הנתונים המחולצים (שם ספק, סכום, תאריך וקטגוריה) נשמרים במסד הנתונים.',
+                    'תמונות וקבצי PDF של חשבונות אינן נשמרות בשרתי המערכת בשום שלב - הן מעובדות בזיכרון בלבד לצורך חילוץ הנתונים, ונמחקות מיידית עם סיום התהליך. רק הנתונים המחולצים (שם ספק, סכום, תאריך וקטגוריה) נשמרים במסד הנתונים.',
                 privacy_body_2:
                     'לצורך חילוץ הנתונים, התמונה מועברת פעם אחת למודל בינה מלאכותית לעיבוד - ואינה נשמרת על ידי המערכת בשום שלב, לפני, במהלך או אחרי העיבוד.',
                 close: 'סגור',
@@ -146,6 +155,10 @@ document.addEventListener('alpine:init', () => {
                 error_create_failed: 'הוספת החשבון נכשלה.',
                 error_delete_failed: 'מחיקת החשבון נכשלה.',
                 error_pay_failed: 'סימון החשבון כשולם נכשל.',
+                error_institution_too_long: 'שם המוסד ארוך מדי (עד 200 תווים).',
+                error_amount_required: 'יש להזין סכום.',
+                error_amount_too_large: 'הסכום גדול מדי.',
+                error_file_empty: 'הקובץ ריק.',
 
                 chat_agent_name: 'סוכן SafeBill',
                 chat_agent_subtitle: 'שאל אותי על החשבונות שלך',
@@ -157,6 +170,9 @@ document.addEventListener('alpine:init', () => {
                 chat_send_aria: 'שלח',
                 chat_error_generic: 'שגיאה בתקשורת עם הסוכן.',
                 chat_error_no_answer: 'מצטער, לא הצלחתי לענות על זה.',
+                chat_error_too_long: 'ההודעה ארוכה מדי (עד 2000 תווים).',
+
+                skip_to_content: 'דלג לתוכן הראשי',
 
                 footer_credit: 'פותח ע"י Nir Halfon',
                 footer_rights: 'SafeBill (2026) · כל הזכויות שמורות',
@@ -264,6 +280,10 @@ document.addEventListener('alpine:init', () => {
                 error_create_failed: 'Adding the bill failed.',
                 error_delete_failed: 'Deleting the bill failed.',
                 error_pay_failed: 'Marking the bill as paid failed.',
+                error_institution_too_long: 'Institution name is too long (max 200 characters).',
+                error_amount_required: 'Please enter an amount.',
+                error_amount_too_large: 'The amount is too large.',
+                error_file_empty: 'The file is empty.',
 
                 chat_agent_name: 'SafeBill Agent',
                 chat_agent_subtitle: 'Ask me about your bills',
@@ -275,6 +295,9 @@ document.addEventListener('alpine:init', () => {
                 chat_send_aria: 'Send',
                 chat_error_generic: 'Error communicating with the agent.',
                 chat_error_no_answer: "Sorry, I couldn't answer that.",
+                chat_error_too_long: 'Message is too long (max 2000 characters).',
+
+                skip_to_content: 'Skip to main content',
 
                 footer_credit: 'Developed by: Nir Halfon',
                 footer_rights: 'SafeBill (2026) · All rights reserved',
@@ -343,6 +366,15 @@ document.addEventListener('alpine:init', () => {
                 this.errorMessage = t('error_unsupported_file');
                 return;
             }
+            // A 0-byte file passes the type/size checks above trivially
+            // (nothing to be "too large") but is never a real bill - most
+            // often a corrupted camera capture or an interrupted drag-drop.
+            // Catching it here saves a request the server would reject
+            // anyway (vision extraction on an empty body can't succeed).
+            if (file.size === 0) {
+                this.errorMessage = t('error_file_empty');
+                return;
+            }
             if (file.size > this._maxBytes) {
                 this.errorMessage = t('error_file_too_large');
                 return;
@@ -377,7 +409,7 @@ document.addEventListener('alpine:init', () => {
                 // image/PDF bytes themselves and never parses multipart at
                 // all. A File object is a valid fetch body on its own, so
                 // no wrapping is needed either way.
-                const response = await fetch(`/bills/upload?user_id=${SAFEBILL_USER_ID}`, {
+                const response = await fetch('/bills/upload', {
                     method: 'POST',
                     headers: { 'Content-Type': file.type || 'application/octet-stream' },
                     body: file,
@@ -435,6 +467,15 @@ document.addEventListener('alpine:init', () => {
         deleting: false,
         payingBillId: null,
         errorMessage: null,
+        // Per-field, not just the one generic errorMessage above - lets
+        // the institution/amount inputs show their own inline reason and
+        // a red ring right where the problem is, instead of a single
+        // block of text at the bottom of the form the user has to match
+        // back to a field themselves.
+        fieldErrors: {
+            institution: '',
+            amount: '',
+        },
         form: {
             id: null,
             institution: '',
@@ -445,6 +486,9 @@ document.addEventListener('alpine:init', () => {
             category: '',
             asmachta: '',
         },
+
+        _MAX_AMOUNT: 100000000,
+        _MAX_INSTITUTION_LENGTH: 200,
 
         // buttonEl is the clicked pencil-icon <button>, whose data-*
         // attributes (rendered from bill.* by Jinja - see the table row
@@ -467,6 +511,7 @@ document.addEventListener('alpine:init', () => {
                 asmachta: d.asmachta || '',
             };
             this.errorMessage = null;
+            this.fieldErrors = { institution: '', amount: '' };
             this.open = true;
         },
 
@@ -487,6 +532,7 @@ document.addEventListener('alpine:init', () => {
                 asmachta: '',
             };
             this.errorMessage = null;
+            this.fieldErrors = { institution: '', amount: '' };
             this.open = true;
         },
 
@@ -494,26 +540,54 @@ document.addEventListener('alpine:init', () => {
             this.open = false;
         },
 
-        async save() {
-            const institution = this.form.institution.trim();
-            const amountNumber = Number(this.form.amount);
+        // Populates fieldErrors and returns whether the form is valid -
+        // called from save() before ever touching the network, same
+        // backstop-over-native-attributes relationship the amount input's
+        // own min="0.01"/required have server-side in
+        // _validate_password_strength (app/routers/auth.py): the real,
+        // authoritative check is still PATCH/POST /bills's own validation,
+        // this just avoids a wasted round trip for the common mistakes.
+        validateForm() {
+            this.fieldErrors = { institution: '', amount: '' };
 
+            const institution = this.form.institution.trim();
             if (!institution) {
-                this.errorMessage = t('error_institution_required');
-                return;
+                this.fieldErrors.institution = t('error_institution_required');
+            } else if (institution.length > this._MAX_INSTITUTION_LENGTH) {
+                this.fieldErrors.institution = t('error_institution_too_long');
             }
-            if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-                this.errorMessage = t('error_amount_positive');
-                return;
+
+            // this.form.amount is the raw string from x-model, not yet
+            // Number(...) - an empty string and a non-numeric string both
+            // need their own message rather than collapsing into the same
+            // "must be greater than zero" wording a blank field would
+            // otherwise get via Number('') === 0.
+            if (this.form.amount === '' || this.form.amount === null) {
+                this.fieldErrors.amount = t('error_amount_required');
+            } else {
+                const amountNumber = Number(this.form.amount);
+                if (!Number.isFinite(amountNumber)) {
+                    this.fieldErrors.amount = t('error_amount_required');
+                } else if (amountNumber <= 0) {
+                    this.fieldErrors.amount = t('error_amount_positive');
+                } else if (amountNumber > this._MAX_AMOUNT) {
+                    this.fieldErrors.amount = t('error_amount_too_large');
+                }
             }
+
+            return !this.fieldErrors.institution && !this.fieldErrors.amount;
+        },
+
+        async save() {
+            if (!this.validateForm()) return;
+
+            const institution = this.form.institution.trim();
 
             // form.id is only ever set by openEditModal() (from an
             // existing bill's data-id) - openCreateModal() always starts
             // it null, so this is a reliable create-vs-update signal.
             const isCreate = !this.form.id;
-            const url = isCreate
-                ? `/bills?user_id=${SAFEBILL_USER_ID}`
-                : `/bills/${this.form.id}?user_id=${SAFEBILL_USER_ID}`;
+            const url = isCreate ? '/bills' : `/bills/${this.form.id}`;
 
             this.saving = true;
             this.errorMessage = null;
@@ -574,7 +648,7 @@ document.addEventListener('alpine:init', () => {
             this.deleting = true;
             this.errorMessage = null;
             try {
-                const response = await fetch(`/bills/${this.form.id}?user_id=${SAFEBILL_USER_ID}`, {
+                const response = await fetch(`/bills/${this.form.id}`, {
                     method: 'DELETE',
                 });
 
@@ -604,7 +678,7 @@ document.addEventListener('alpine:init', () => {
             if (this.payingBillId) return;
             this.payingBillId = billId;
             try {
-                const response = await fetch(`/bills/${billId}/pay?user_id=${SAFEBILL_USER_ID}`, {
+                const response = await fetch(`/bills/${billId}/pay`, {
                     method: 'PUT',
                 });
 
@@ -627,19 +701,66 @@ document.addEventListener('alpine:init', () => {
         open: false,
         sending: false,
         input: '',
-        // Set once at component creation, not reactively re-translated on
-        // a later toggleLang() - chat history reads as a log of what was
-        // actually shown/said at the time, and retroactively rewriting
-        // past turns would be actively wrong for the agent's own replies
-        // (see the note on send() below), so the greeting - the one line
-        // here that's pure UI chrome, not an agent response - doesn't
-        // special-case itself out of that same log-like behavior either.
-        messages: [
-            {
-                sender: 'agent',
-                text: t('chat_greeting'),
-            },
-        ],
+        chatError: null,
+        // Populated by init() below, not here - restoring from
+        // localStorage needs to happen before the greeting default would
+        // otherwise apply, and Alpine only guarantees init() runs before
+        // the surrounding DOM (the x-for over messages) is first bound,
+        // not before this object literal is constructed.
+        messages: [],
+
+        _MAX_HISTORY: 50,
+        _MAX_MESSAGE_LENGTH: 2000,
+
+        // Includes the signed-in user's id, not a single shared key - two
+        // different accounts using the same browser (e.g. a shared family
+        // computer) must never see each other's chat history.
+        _storageKey() {
+            return `safebill_chat_history_${SAFEBILL_USER_ID}`;
+        },
+
+        // Alpine calls this once automatically right after the component
+        // is created (same convention as onboarding's init() further
+        // below) - the natural place to restore a saved conversation
+        // before the DOM's x-for over `messages` is first bound.
+        init() {
+            let restored = null;
+            try {
+                const raw = localStorage.getItem(this._storageKey());
+                if (raw) restored = JSON.parse(raw);
+            } catch (e) {
+                // Malformed JSON or localStorage unavailable (e.g. private
+                // browsing) - fall through to the fresh-greeting default
+                // below rather than let this throw during Alpine's
+                // page-wide init.
+            }
+
+            // Set once here, not reactively re-translated on a later
+            // toggleLang() - chat history reads as a log of what was
+            // actually shown/said at the time, and retroactively
+            // rewriting past turns would be actively wrong for the
+            // agent's own replies (see the note on send() below), so the
+            // greeting - the one line here that's pure UI chrome, not an
+            // agent response - doesn't special-case itself out of that
+            // same log-like behavior either.
+            this.messages = Array.isArray(restored) && restored.length > 0
+                ? restored
+                : [{ sender: 'agent', text: t('chat_greeting') }];
+        },
+
+        // Capped, not unbounded - a conversation carried across many
+        // sessions shouldn't grow localStorage (a few MB quota, shared
+        // with every other key this origin uses) without bound.
+        _saveHistory() {
+            try {
+                const trimmed = this.messages.slice(-this._MAX_HISTORY);
+                localStorage.setItem(this._storageKey(), JSON.stringify(trimmed));
+            } catch (e) {
+                // Best-effort, same as onboarding's tutorialSeen save
+                // further below - worst case the next visit just starts a
+                // fresh conversation instead of failing loudly here.
+            }
+        },
 
         toggle() {
             this.open = !this.open;
@@ -671,16 +792,28 @@ document.addEventListener('alpine:init', () => {
             const text = this.input.trim();
             if (!text || this.sending) return;
 
+            // A validation failure here shows next to the input, not as a
+            // fake message appended to the log - the messages array is a
+            // log of what was actually exchanged (see the note on
+            // `messages` above), and the agent never said anything about
+            // this, so it doesn't belong in that log as an "agent" reply.
+            if (text.length > this._MAX_MESSAGE_LENGTH) {
+                this.chatError = t('chat_error_too_long');
+                return;
+            }
+            this.chatError = null;
+
             this.messages.push({ sender: 'user', text });
             this.input = '';
             this.sending = true;
             this.scrollToBottom();
+            this._saveHistory();
 
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: SAFEBILL_USER_ID, message: text }),
+                    body: JSON.stringify({ message: text }),
                 });
 
                 if (!response.ok) {
@@ -704,6 +837,7 @@ document.addEventListener('alpine:init', () => {
             } finally {
                 this.sending = false;
                 this.scrollToBottom();
+                this._saveHistory();
             }
         },
     }));
