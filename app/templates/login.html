@@ -4,6 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>התחברות - SafeBill</title>
+
+    <!-- Open Graph - controls the rich preview WhatsApp/Telegram/etc.
+         show when this link is shared. og:image needs an absolute URL
+         (a relative /static/... path won't resolve for an external
+         scraper), so request.url_for is used rather than a hardcoded
+         domain - this keeps working correctly if the domain ever
+         changes, and still renders something valid in local dev. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SafeBill">
+    <meta property="og:locale" content="he_IL">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
+    <meta property="og:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
+    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
+    <meta name="twitter:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
+    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+
+    <!-- iOS "Add to Home Screen" - apple-touch-icon controls the actual
+         icon; apple-mobile-web-app-title sets a short label for under
+         it (without this, iOS falls back to this page's own <title>,
+         which would show the Hebrew page title instead of the app
+         name). Plain favicon alongside for regular browser tabs. -->
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>

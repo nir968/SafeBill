@@ -4,6 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>לוח הבקרה - SafeBill</title>
+
+    <!-- No Open Graph tags here on purpose, unlike login.html/signup.html -
+         this page is auth-gated (GET /dashboard redirects an anonymous
+         request to /login), so a link-preview scraper fetching it
+         un-authenticated would see login.html's OG tags anyway once it
+         follows that redirect; duplicating the same tags here would
+         never actually be reached by one. Icon/favicon tags still apply
+         though - "Add to Home Screen" reads whatever page is loaded in
+         Safari at the moment, which for a logged-in user is usually
+         this one. -->
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
@@ -46,6 +60,23 @@
             >
                 <span x-text="$store.app.t('about_link')"></span>
             </button>
+            <!-- Only rendered when a bot username is actually configured
+                 (see settings.telegram_bot_username in app/config.py) -
+                 same "opt-in feature hides itself" pattern as the
+                 UserWay widget below, rather than showing a button that
+                 would just 503 on click. -->
+            {% if telegram_bot_username %}
+            <button
+                type="button"
+                x-data="telegramLink()"
+                @click="connect()"
+                :disabled="connecting"
+                class="text-sm text-slate-300 hover:text-white transition disabled:opacity-50"
+            >
+                <span x-show="connecting" x-cloak x-text="$store.app.t('telegram_connecting')"></span>
+                <span x-show="!connecting" x-text="$store.app.t('{{ 'telegram_connected' if telegram_linked else 'telegram_connect' }}')"></span>
+            </button>
+            {% endif %}
             <!-- Own tiny x-data rather than a method on aboutModal() -
                  that component is scoped to "about modal open/closed
                  state", and logout isn't that, even though it's the

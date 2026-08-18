@@ -106,6 +106,18 @@ def _register_bot_commands() -> None:
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    # `/start <token>` - the payload from the dashboard's "Connect
+    # Telegram" deep link (see POST /auth/telegram/link-token in
+    # app/routers/auth.py). Telegram appends it exactly like any other
+    # command argument, so the same message.text.split(maxsplit=1)
+    # pattern used by /search and /edit below applies here too. A bare
+    # /start (no payload - the overwhelmingly common case) falls through
+    # to the normal welcome text unchanged.
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        _handle_link_token(message, args[1].strip())
+        return
+
     welcome_text = (
         "היי! איזה כיף לראות אותך כאן 👋\n\n"
         "אני SafeBill, העוזר האישי שלך למעקב אחרי חשבוניות.\n"
@@ -113,6 +125,35 @@ def send_welcome(message):
         "ואני כבר אעשה את כל העבודה השחורה! 📸📄✨"
     )
     bot.reply_to(message, welcome_text)
+
+
+def _handle_link_token(message, token: str) -> None:
+    """Redeems a /start deep-link token against POST /auth/telegram/link,
+    connecting this Telegram account to whichever website account
+    generated it. message.from_user.id is Telegram's own signed value
+    for who actually tapped Start - not something this bot invents or
+    trusts blindly from message text - which is exactly why the backend
+    accepts it via the internal-API-key trusted path (see
+    require_internal_api_key in app/auth.py) rather than needing the
+    website session to somehow also be present here."""
+    try:
+        response = backend.post(
+            f"{BACKEND_URL}/auth/telegram/link",
+            json={"token": token, "telegram_id": message.from_user.id},
+            timeout=DB_QUERY_TIMEOUT_SECONDS,
+        )
+    except requests.exceptions.RequestException as e:
+        bot.reply_to(message, f"❌ שגיאה בתקשורת מול השרת: {e}")
+        return
+
+    if not response.ok:
+        bot.reply_to(message, f"⚠️ {_extract_error_detail(response)}")
+        return
+
+    email = response.json().get('email')
+    text = "✅ החשבון שלך" + (f" ({email})" if email else "") + " קושר בהצלחה לטלגרם!\n"
+    text += "מעכשיו תקבל התראות ותוכל לנהל את החשבונות שלך גם כאן."
+    bot.reply_to(message, text)
 
 @bot.message_handler(commands=['help'])
 def send_help(message):

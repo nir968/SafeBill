@@ -174,6 +174,11 @@ document.addEventListener('alpine:init', () => {
 
                 skip_to_content: 'דלג לתוכן הראשי',
 
+                telegram_connect: 'התחברות לטלגרם',
+                telegram_connected: '✅ מחובר לטלגרם',
+                telegram_connecting: 'מתחבר...',
+                telegram_link_error: 'לא הצלחנו ליצור קישור לטלגרם, נסו שוב.',
+
                 footer_credit: 'פותח ע"י Nir Halfon',
                 footer_rights: 'SafeBill (2026) · כל הזכויות שמורות',
             },
@@ -298,6 +303,11 @@ document.addEventListener('alpine:init', () => {
                 chat_error_too_long: 'Message is too long (max 2000 characters).',
 
                 skip_to_content: 'Skip to main content',
+
+                telegram_connect: 'Connect Telegram',
+                telegram_connected: '✅ Telegram Connected',
+                telegram_connecting: 'Connecting...',
+                telegram_link_error: "Couldn't create a Telegram link, please try again.",
 
                 footer_credit: 'Developed by: Nir Halfon',
                 footer_rights: 'SafeBill (2026) · All rights reserved',
@@ -853,6 +863,35 @@ document.addEventListener('alpine:init', () => {
     // dismissing one could silently affect the other for no reason.
     Alpine.data('termsModal', () => ({
         open: false,
+    }));
+
+    Alpine.data('telegramLink', () => ({
+        connecting: false,
+
+        // Fetches a fresh, single-use deep link (see POST
+        // /auth/telegram/link-token in app/routers/auth.py) and
+        // navigates there immediately - the token is short-lived and
+        // tied to this request, so there's nothing to keep around
+        // client-side; a stale one from an earlier click would just get
+        // rejected by the backend as expired anyway.
+        async connect() {
+            if (this.connecting) return;
+            this.connecting = true;
+            try {
+                const response = await fetch('/auth/telegram/link-token', { method: 'POST' });
+                if (!response.ok) {
+                    const detail = await response.json().catch(() => null);
+                    alert((detail && detail.detail) || t('telegram_link_error'));
+                    return;
+                }
+                const data = await response.json();
+                window.location.href = data.deep_link;
+            } catch (networkError) {
+                alert(t('error_network'));
+            } finally {
+                this.connecting = false;
+            }
+        },
     }));
 
     Alpine.data('logoutButton', () => ({

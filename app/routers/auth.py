@@ -29,11 +29,18 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import COOKIE_NAME, create_access_token, hash_password, verify_password
+from app.auth import (
+    COOKIE_NAME,
+    create_access_token,
+    get_current_user,
+    hash_password,
+    require_internal_api_key,
+    verify_password,
+)
 from app.config import settings
 from app.db import get_db
 from app.models import User
@@ -183,3 +190,116 @@ async def login(
 async def logout(response: Response):
     response.delete_cookie(COOKIE_NAME)
     return {"status": "logged out"}
+
+
+# --- Telegram account linking -------------------------------------------
+#
+# Non-destructive by design: linking never renumbers a User row's id or
+# moves Bill rows between accounts. It only sets the web-native account's
+# telegram_chat_id to the real Telegram id - the same column worker.py
+# already reads to decide where to send alerts (see analyze_bill /
+# enforce_due_alerts in app/worker.py), so outbound alerts start working
+# for a newly-linked account for free. Inbound requests from the bot are
+# resolved back to this same web-native account by
+# app/auth.py::_resolve_linked_user_id, called from every bot-authenticated
+# request via get_authorized_user_id. One real limitation this leaves: if
+# the Telegram account already had its own bill history *before* linking
+# (someone used the bot first, then signed up on the site and linked the
+# same Telegram account), those older bills stay under the original
+# Telegram-id row rather than being merged in - a full merge would mean
+# renumbering/re-parenting live data, which is a lot more risk than this
+# feature needs to take on for a first version.
+
+_LINK_TOKEN_TTL_SECONDS = 600  # 10 minutes - long enough to switch apps and tap Start
+_LINK_TOKEN_REDIS_PREFIX = "tg_link:"
+
+
+class TelegramLinkTokenResponse(BaseModel):
+    deep_link: str
+
+
+@router.post("/telegram/link-token", response_model=TelegramLinkTokenResponse)
+async def create_telegram_link_token(
+    request: Request, current_user: User = Depends(get_current_user)
+):
+    """
+    Cookie-authenticated (the dashboard's own "Connect Telegram" button) -
+    mints a single-use, short-lived token identifying *this* session's
+    user, and hands back a t.me deep link carrying it as the /start
+    payload. Redis (already available as request.app.state.redis - the
+    same connection app/worker.py's arq jobs use, since ArqRedis is a
+    thin subclass of a real redis.asyncio.Redis client, not a narrower
+    wrapper) is a natural fit for a value that only needs to survive a
+    few minutes and be readable exactly once.
+    """
+    if not settings.telegram_bot_username:
+        raise HTTPException(503, "חיבור לטלגרם אינו מוגדר כרגע")
+
+    token = secrets.token_urlsafe(24)
+    await request.app.state.redis.set(
+        f"{_LINK_TOKEN_REDIS_PREFIX}{token}", str(current_user.id), ex=_LINK_TOKEN_TTL_SECONDS
+    )
+    return TelegramLinkTokenResponse(
+        deep_link=f"https://t.me/{settings.telegram_bot_username}?start={token}"
+    )
+
+
+class TelegramLinkRequest(BaseModel):
+    token: str
+    telegram_id: int
+
+
+class TelegramLinkResponse(BaseModel):
+    email: str | None
+
+
+@router.post("/telegram/link", response_model=TelegramLinkResponse)
+async def redeem_telegram_link_token(
+    request: Request, payload: TelegramLinkRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Called by telegram_bot.py, never by the browser - authenticated via
+    the shared internal API key (require_internal_api_key), not a user
+    session, since the caller here is the bot acting on behalf of
+    whoever just tapped "Start" on the deep link, before any linkage
+    exists yet to authenticate *as*.
+    """
+    await require_internal_api_key(request)
+
+    redis = request.app.state.redis
+    key = f"{_LINK_TOKEN_REDIS_PREFIX}{payload.token}"
+    raw_user_id = await redis.get(key)
+    if raw_user_id is None:
+        raise HTTPException(400, "קישור החיבור פג תוקף או שאינו תקין - נסו שוב מהאתר")
+    # Deleted immediately, before doing anything else - single-use, so a
+    # replayed or reused token can't silently re-link a third account.
+    await redis.delete(key)
+
+    web_user_id = int(raw_user_id)
+    user = await db.get(User, web_user_id)
+    if user is None:
+        raise HTTPException(404, "החשבון המקושר לא נמצא")
+
+    telegram_id_str = str(payload.telegram_id)
+
+    # Re-linking / switching accounts: clear this Telegram id from any
+    # OTHER web-native row that previously claimed it, so at most one row
+    # ever has it as a reassignable link - otherwise
+    # _resolve_linked_user_id's lookup would become ambiguous. Never
+    # touches the row where id == telegram_id itself (if any) - that's
+    # just that bot-native row's own default self-referential value (see
+    # get_or_create_user in app/crud.py), not a link to take away.
+    await db.execute(
+        update(User)
+        .where(
+            User.telegram_chat_id == telegram_id_str,
+            User.id != payload.telegram_id,
+            User.id != web_user_id,
+        )
+        .values(telegram_chat_id=None)
+    )
+
+    user.telegram_chat_id = telegram_id_str
+    await db.commit()
+
+    return TelegramLinkResponse(email=user.email)

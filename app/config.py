@@ -66,6 +66,17 @@ class Settings(BaseSettings):
     # dashboard after creating a (free) account for this site's domain.
     userway_account_id: str = ""
 
+    # Empty by default, same "opt-in, feature hides itself" pattern as
+    # userway_account_id above - the dashboard's "Connect Telegram"
+    # button (app/templates/dashboard.html) only renders once this is
+    # set. Not derivable from telegram_bot_token (that authenticates API
+    # calls; it doesn't reveal the bot's public @username) and
+    # deliberately not fetched live via Telegram's getMe API either - a
+    # static setting can't silently break page rendering if Telegram's
+    # API has a bad moment, and it only ever needs to be set once. Set
+    # via TELEGRAM_BOT_USERNAME in .env - without the @ prefix.
+    telegram_bot_username: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

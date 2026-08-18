@@ -136,6 +136,8 @@ async def dashboard(
             "regular_bills": regular_bills,
             "ticket_bills": ticket_bills,
             "userway_account_id": settings.userway_account_id,
+            "telegram_bot_username": settings.telegram_bot_username,
+            "telegram_linked": current_user.telegram_chat_id is not None,
         },
     )
 

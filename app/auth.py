@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, HTTPException, Request
 from passlib.context import CryptContext
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -130,6 +131,53 @@ async def get_current_user_for_page(request: Request, db: AsyncSession = Depends
     return user
 
 
+def _has_valid_internal_api_key(request: Request) -> bool:
+    """compare_digest, not `==` - a naive equality check leaks timing
+    information about how many leading characters matched, which is
+    exactly the kind of side channel that turns "the key is 64 hex
+    chars" into a practically brute-forceable search instead of an
+    infeasible one."""
+    api_key = request.headers.get(INTERNAL_API_KEY_HEADER)
+    return api_key is not None and secrets.compare_digest(api_key, settings.internal_api_key)
+
+
+async def require_internal_api_key(request: Request) -> None:
+    """For routes ONLY ever called by telegram_bot.py as a trusted
+    server-to-server caller with no per-user identity to resolve, unlike
+    get_authorized_user_id below - e.g. POST /auth/telegram/link, which
+    the bot calls on behalf of whichever Telegram user just tapped
+    "Start" on a deep link, not on behalf of any user_id already known
+    to be theirs (that's the whole point of the endpoint: to establish
+    that link in the first place)."""
+    if not _has_valid_internal_api_key(request):
+        raise HTTPException(401, "Not authenticated")
+
+
+async def _resolve_linked_user_id(db: AsyncSession, raw_user_id: int) -> int:
+    """A raw Telegram id, as telegram_bot.py always sends it, needs
+    resolving before it's trustworthy as "the" user_id: if this Telegram
+    account has been linked to a web-native account (negative id) via
+    POST /auth/telegram/link, that web account's own id - never the
+    Telegram id itself - is the canonical one, since that's the row
+    Bill.user_id actually points at for everything created from the
+    website. Without this, every bot-driven request for a linked user
+    would silently create/use a second, disconnected account keyed by
+    their raw Telegram id instead of reaching their real bills.
+
+    `User.id != raw_user_id` excludes the ordinary, unlinked case - a
+    bot-native user's own row has telegram_chat_id == str(its own id) by
+    default (see get_or_create_user in app/crud.py), which isn't a
+    "link" to resolve, just that row's normal self-referential value.
+    Returns raw_user_id unchanged if nothing else claims it (the common
+    case - most bot users never link a website account at all).
+    """
+    result = await db.execute(
+        select(User.id).where(User.telegram_chat_id == str(raw_user_id), User.id != raw_user_id)
+    )
+    linked_id = result.scalar_one_or_none()
+    return linked_id if linked_id is not None else raw_user_id
+
+
 async def get_authorized_user_id(
     request: Request, user_id: int | None = None, db: AsyncSession = Depends(get_db)
 ) -> int:
@@ -159,15 +207,14 @@ async def get_authorized_user_id(
        identity via Telegram's own auth before ever calling this backend
        (message.from_user.id in telegram_bot.py comes from Telegram's
        signed update payload, not from anything the end user typed into
-       this API directly). The supplied user_id is trusted as-is in this
-       case - it's required (no default the bot could omit and still
-       reach someone's data by accident).
+       this API directly). The supplied user_id is required here (no
+       default the bot could omit and still reach someone's data by
+       accident), and passed through _resolve_linked_user_id before
+       being trusted, in case it belongs to a Telegram account that's
+       since been linked to a web-native one (see POST
+       /auth/telegram/link).
 
-    Neither -> 401. compare_digest, not `==`, for the API key check - a
-    naive equality check leaks timing information about how many leading
-    characters matched, which is exactly the kind of side channel that
-    turns "the key is 64 hex chars" into a practically brute-forceable
-    search instead of an infeasible one.
+    Neither -> 401.
     """
     user = await _authenticate(request, db)
     if user is not None:
@@ -175,10 +222,9 @@ async def get_authorized_user_id(
             raise HTTPException(403, "Forbidden: user_id does not match the authenticated session")
         return user.id
 
-    api_key = request.headers.get(INTERNAL_API_KEY_HEADER)
-    if api_key is not None and secrets.compare_digest(api_key, settings.internal_api_key):
+    if _has_valid_internal_api_key(request):
         if user_id is None:
             raise HTTPException(400, "user_id is required")
-        return user_id
+        return await _resolve_linked_user_id(db, user_id)
 
     raise HTTPException(401, "Not authenticated")

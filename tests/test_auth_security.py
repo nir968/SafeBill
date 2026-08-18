@@ -33,6 +33,28 @@ class _FakeUser:
         self.id = id
 
 
+class _FakeResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+class _FakeDb:
+    """Stands in for AsyncSession in the internal-API-key branch, which
+    now calls _resolve_linked_user_id (a real DB query) before trusting a
+    raw Telegram id - see app/auth.py. `linked_id` is exactly what that
+    query would find: None if nothing has linked this Telegram id (the
+    common case), or another account's id if it has."""
+
+    def __init__(self, linked_id=None):
+        self._linked_id = linked_id
+
+    async def execute(self, stmt):
+        return _FakeResult(self._linked_id)
+
+
 @pytest.fixture(autouse=True)
 def no_session_by_default(monkeypatch):
     """Every test starts as if no session cookie was ever sent - matches
@@ -82,12 +104,25 @@ async def test_session_user_with_mismatched_user_id_param_is_forbidden(authentic
     assert exc_info.value.status_code == 403
 
 
-async def test_valid_internal_api_key_trusts_the_supplied_user_id():
+async def test_valid_internal_api_key_trusts_the_supplied_user_id_when_unlinked():
     """telegram_bot.py's path - no session cookie exists for it to
-    present, only the shared internal key."""
+    present, only the shared internal key. Nothing has linked this
+    Telegram id to a web-native account, the situation for the vast
+    majority of bot users - the raw id is used as-is."""
     request = _FakeRequest(headers={INTERNAL_API_KEY_HEADER: settings.internal_api_key})
-    result = await get_authorized_user_id(request, 555, db=None)
+    result = await get_authorized_user_id(request, 555, db=_FakeDb(linked_id=None))
     assert result == 555
+
+
+async def test_valid_internal_api_key_resolves_a_linked_telegram_id():
+    """This Telegram id has been linked to a web-native account (see
+    POST /auth/telegram/link) - the linked account's own id must be used
+    instead of the raw Telegram id sent by the bot, or a linked user's
+    bot activity would silently land on a second, disconnected account
+    instead of reaching their real bills."""
+    request = _FakeRequest(headers={INTERNAL_API_KEY_HEADER: settings.internal_api_key})
+    result = await get_authorized_user_id(request, 555, db=_FakeDb(linked_id=-123456789))
+    assert result == -123456789
 
 
 async def test_valid_internal_api_key_without_user_id_is_bad_request():
