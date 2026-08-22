@@ -52,3 +52,6 @@ jobs:
         # already has an empty-string fallback, so no env vars are
         # needed here either.
         run: docker compose build
+        env:
+          POSTGRES_PASSWORD: dummy_password_for_ci
+          DATABASE_URL: postgresql+asyncpg://safebill:dummy_password_for_ci@db:5432/safebill
