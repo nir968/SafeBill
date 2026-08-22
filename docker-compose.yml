@@ -3,7 +3,17 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: safebill
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # No fallback value on purpose - ${POSTGRES_PASSWORD} alone (no `:-`
+      # or `:?`) would silently resolve to an EMPTY STRING if .env is
+      # missing or doesn't define it (Compose only warns, never fails),
+      # which is exactly how a mismatched/empty password reaches asyncpg
+      # instead of a clear error at `docker compose up` time. `:?` makes
+      # that failure loud and immediate instead. .env is gitignored (as
+      # it must be) and therefore never arrives via `git pull`/`git
+      # clone` - it has to be created directly on each host (this AWS
+      # server included) from .env.example, with a real
+      # POSTGRES_PASSWORD value, before this will start at all.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env - copy .env.example on this host and fill it in}
       POSTGRES_DB: safebill
     ports:
       - "5432:5432"
@@ -31,7 +41,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD}@db:5432/safebill
+      # Same ${POSTGRES_PASSWORD:?...} as the db service above, not a bare
+      # reference - this must resolve to the exact same value db was
+      # actually initialized with, or asyncpg fails with
+      # InvalidPasswordError; failing loudly here if .env is missing beats
+      # silently trying to connect with an empty password.
+      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env - copy .env.example on this host and fill it in}@db:5432/safebill
       REDIS_URL: redis://redis:6379/0
       VISION_PROVIDER: gemini
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -59,7 +74,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD}@db:5432/safebill
+      # Same ${POSTGRES_PASSWORD:?...} as the db service above, not a bare
+      # reference - this must resolve to the exact same value db was
+      # actually initialized with, or asyncpg fails with
+      # InvalidPasswordError; failing loudly here if .env is missing beats
+      # silently trying to connect with an empty password.
+      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env - copy .env.example on this host and fill it in}@db:5432/safebill
       REDIS_URL: redis://redis:6379/0
       VISION_PROVIDER: gemini
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
