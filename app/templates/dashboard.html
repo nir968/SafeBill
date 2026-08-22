@@ -356,11 +356,37 @@
                     <p class="mt-1 text-xs text-slate-500">{{ row.count }} <span x-text="$store.app.t('bills_count_suffix')"></span></p>
                 </div>
                 {% endfor %}
+                <!-- Total Paid - lives in the same grid as the pending
+                     cards above so it sits visibly "next to" them, but
+                     outside the pending_by_currency loop since it isn't
+                     per-currency (see get_total_paid in app/crud.py: a
+                     single blended sum across every currency a user has
+                     paid bills in, not split out like the pending cards
+                     are - a real simplification for a one-number summary
+                     card, not a bug). Emerald, not the pending cards' own
+                     amber/pink - matches this app's existing "paid" color
+                     language (see the status_paid pill in the table
+                     below), so this card reads as good news at a glance
+                     rather than another thing needing attention. -->
+                <div class="glass-card rounded-2xl p-5 select-none border border-emerald-500/20">
+                    <p class="text-sm text-slate-400" x-text="$store.app.t('total_paid_label')"></p>
+                    <p class="mt-2 text-3xl font-bold bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">
+                        {{ total_paid|money('ILS') }}
+                    </p>
+                </div>
             </div>
             {% else %}
-            <div class="glass-card rounded-2xl p-8 text-center">
-                <p class="text-4xl mb-2">✅</p>
-                <p class="text-slate-300 font-medium" x-text="$store.app.t('all_paid_message')"></p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="glass-card rounded-2xl p-8 text-center select-none">
+                    <p class="text-4xl mb-2">✅</p>
+                    <p class="text-slate-300 font-medium" x-text="$store.app.t('all_paid_message')"></p>
+                </div>
+                <div class="glass-card rounded-2xl p-8 text-center select-none border border-emerald-500/20">
+                    <p class="text-sm text-slate-400" x-text="$store.app.t('total_paid_label')"></p>
+                    <p class="mt-2 text-3xl font-bold bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">
+                        {{ total_paid|money('ILS') }}
+                    </p>
+                </div>
             </div>
             {% endif %}
         </section>
@@ -633,10 +659,21 @@
 
                     <div>
                         <label class="block text-xs text-slate-400 mb-1" x-text="$store.app.t('th_reference')"></label>
+                        <!-- Typing a reference number is a strong, deliberate
+                             signal that this bill has actually been paid (a
+                             real payment confirmation number wasn't typed in
+                             for a still-pending bill) - @blur, not @input,
+                             so this fires once when the user's done typing
+                             and moves on, not on every keystroke. One-way
+                             only: clearing the field back out does NOT
+                             revert status, since that's not something this
+                             was asked to do and could undo an otherwise
+                             already-confirmed paid status unexpectedly. -->
                         <input
                             x-model="form.asmachta"
                             type="text"
                             maxlength="100"
+                            @blur="if (form.asmachta.trim()) form.status = 'paid'"
                             class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         >
                     </div>

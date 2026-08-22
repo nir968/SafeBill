@@ -1,8 +1,9 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models import Bill, User
+
 
 
 async def get_or_create_user(db: AsyncSession, user_id: int) -> User:
@@ -30,3 +31,26 @@ async def get_or_create_user(db: AsyncSession, user_id: int) -> User:
 
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one()
+
+
+async def get_total_paid(db: AsyncSession, user_id: int) -> float:
+    """Per-currency would be more correct (see GET /dashboard's own
+    pending_by_currency, which deliberately never blends currencies for
+    exactly this reason - a $50 bill and a ₪50 bill don't add up to
+    "100" of anything real) but this matches what was asked: a single
+    total across every currency a user happens to have paid bills in.
+    Worth revisiting if that ever actually matters for an account with
+    more than one currency."""
+    stmt = select(func.sum(Bill.amount)).where(
+        Bill.user_id == user_id,
+        # The status column stores the English literal "paid" (see
+        # _EDITABLE_STATUSES in app/main.py and PUT /bills/{id}/pay) -
+        # comparing against the Hebrew word here meant this could never
+        # match a real row. Not something that crashed the app (a
+        # 0-row match is a completely valid, silent SQL result, not an
+        # error) - it would just have always returned 0.0.
+        Bill.status == "paid",
+    )
+    result = await db.execute(stmt)
+    total = result.scalar()
+    return float(total) if total else 0.0

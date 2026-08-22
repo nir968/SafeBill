@@ -103,6 +103,7 @@ document.addEventListener('alpine:init', () => {
                 pending_total_label: 'סך הכל ממתין',
                 bills_count_suffix: 'חשבונות',
                 all_paid_message: 'הכל שולם! אין חשבונות ממתינים.',
+                total_paid_label: 'סך הכל שולם',
 
                 regular_bills_title: 'חשבונות שוטפים',
                 tickets_title: 'דוחות וקנסות',
@@ -238,6 +239,7 @@ document.addEventListener('alpine:init', () => {
                 pending_total_label: 'Total pending',
                 bills_count_suffix: 'bills',
                 all_paid_message: 'All paid! No pending bills.',
+                total_paid_label: 'Total paid',
 
                 regular_bills_title: 'Regular Bills',
                 tickets_title: 'Fines & Tickets',

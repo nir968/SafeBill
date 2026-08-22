@@ -13,6 +13,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import Bill, User
 from app.vision import TICKET_CATEGORY
+from app.crud import get_total_paid
 
 router = APIRouter(tags=["web"])
 
@@ -126,6 +127,8 @@ async def dashboard(
     )
     ticket_bills = ticket_result.scalars().all()
 
+    total_paid = await get_total_paid(db, user_id)
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -138,6 +141,7 @@ async def dashboard(
             "userway_account_id": settings.userway_account_id,
             "telegram_bot_username": settings.telegram_bot_username,
             "telegram_linked": current_user.telegram_chat_id is not None,
+            "total_paid": total_paid
         },
     )
 
