@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: safebill
-      POSTGRES_PASSWORD: 0U1zs37
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: safebill
     ports:
       - "5432:5432"
@@ -28,36 +28,12 @@ services:
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    # Loads every var in .env as a real container environment variable -
-    # this is what actually makes SECRET_KEY/INTERNAL_API_KEY (and
-    # anything else with no default in app/config.py's Settings) visible
-    # in here reliably. Previously this container only "happened" to see
-    # .env at all because of the volumes mount below placing it at
-    # /app/.env for pydantic-settings' own env_file lookup to find - a
-    # real mechanism, but an implicit one that breaks the moment that
-    # mount is ever removed/changed. Explicit env_file doesn't depend on
-    # that. Entries in `environment:` below still win over .env for the
-    # same key (Compose's own precedence rule), which is exactly why
-    # DATABASE_URL/REDIS_URL can stay hardcoded to the in-Docker service
-    # hostnames here even though .env's own versions of those point
-    # elsewhere (e.g. at production's `db`/`redis` too, just not
-    # reachable from a plain `docker compose up` on your machine).
     env_file:
       - .env
     environment:
-      # ${POSTGRES_PASSWORD:-0U1zs37}, not a hardcoded literal repeated
-      # in two places - this now always matches whatever password the
-      # `db` service below was actually initialized with (its own
-      # POSTGRES_PASSWORD), whether that's .env's value or the same
-      # 0U1zs37 fallback. The previous literal "POSTGRES_PASSWORD" here
-      # (not a real password, and not a valid ${...} reference either)
-      # is exactly what asyncpg's "password authentication failed for
-      # user safebill" crash was.
-      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD:-0U1zs37}@db:5432/safebill
+      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD}@db:5432/safebill
       REDIS_URL: redis://redis:6379/0
       VISION_PROVIDER: gemini
-      # Set in a .env file next to this compose file, or export in the
-      # shell before `docker compose up` — never hardcode a real key here.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       VLM_TIMEOUT_SECONDS: 60
     ports:
@@ -83,7 +59,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD:-0U1zs37}@db:5432/safebill
+      DATABASE_URL: postgresql+asyncpg://safebill:${POSTGRES_PASSWORD}@db:5432/safebill
       REDIS_URL: redis://redis:6379/0
       VISION_PROVIDER: gemini
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
