@@ -1,0 +1,35 @@
+# Separate image from the main Dockerfile on purpose - telegram_bot.py is
+# already, deliberately, an independently-deployable process (see its own
+# top-of-file comments): it has its own requirements-bot.txt
+# (pyTelegramBotAPI/requests/python-dotenv - none of which the FastAPI app
+# itself needs) and never imports anything from the `app` package. Reusing
+# the main Dockerfile/image would either fail outright (telebot isn't in
+# requirements.txt, so `python telegram_bot.py` would crash with
+# ModuleNotFoundError) or, if made to work by merging the two requirements
+# files, would blur a boundary this codebase deliberately keeps sharp.
+#
+# COPY telegram_bot.py only, not the whole repo or app/ - keeping this
+# image minimal is also a deliberate enforcement of that same boundary: if
+# telegram_bot.py ever grew an `from app...` import, this build would fail
+# immediately instead of silently working here and breaking only in a
+# leaner deployment.
+FROM python:3.12-slim
+
+# Without this, Python fully block-buffers stdout/stderr whenever they
+# aren't a TTY (true for every container's default output stream) - this
+# script's own startup prints ("🤖 הבוט מאזין להודעות...",
+# _register_bot_commands()'s success/failure line) would sit in that
+# buffer indefinitely instead of ever reaching `docker compose logs`,
+# which was verified directly: the container was confirmed alive and
+# polling via `docker top` while `docker compose logs` showed nothing at
+# all for it.
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements-bot.txt .
+RUN pip install --no-cache-dir -r requirements-bot.txt
+
+COPY telegram_bot.py .
+
+CMD ["python", "telegram_bot.py"]

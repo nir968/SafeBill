@@ -2,7 +2,7 @@
 <html dir="rtl" lang="he">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>התחברות - SafeBill</title>
 
     <!-- Open Graph - controls the rich preview WhatsApp/Telegram/etc.
@@ -24,12 +24,27 @@
     <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
 
     <!-- iOS "Add to Home Screen" - apple-touch-icon controls the actual
-         icon; apple-mobile-web-app-title sets a short label for under
-         it (without this, iOS falls back to this page's own <title>,
-         which would show the Hebrew page title instead of the app
-         name). Plain favicon alongside for regular browser tabs. -->
+         icon (two link tags: an unsized one as a general fallback, plus
+         an explicit 180x180 one for current devices - both point at the
+         same file, harmless duplication). apple-mobile-web-app-title
+         sets a short label for under the icon (without this, iOS falls
+         back to this page's own <title>, which would show the Hebrew
+         page title instead of the app name). apple-mobile-web-app-capable
+         makes a home-screen launch open in standalone mode - no Safari
+         address bar or back button, just this app's own in-page
+         navigation - and status-bar-style=black-translucent overlays the
+         iOS status bar on top of the page instead of reserving space for
+         it; the safe-area-inset-top padding this needs to not visually
+         collide with page content lives in dashboard.css (shared by
+         every page), gated on viewport-fit=cover above actually being
+         set - without that meta flag iOS reports the safe-area inset as
+         zero and the padding would be a no-op. Plain favicon alongside
+         for regular browser tabs. -->
     <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -91,6 +106,9 @@
                             class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
                         ></button>
                     </div>
+                    <p class="mt-1.5 text-end">
+                        <a href="/forgot-password" class="text-xs text-indigo-300 hover:text-indigo-200">שכחת סיסמה?</a>
+                    </p>
                 </div>
 
                 <p id="error-message" class="text-rose-300 text-sm hidden select-text"></p>

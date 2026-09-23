@@ -103,6 +103,7 @@ document.addEventListener('alpine:init', () => {
                 pending_total_label: 'סך הכל ממתין',
                 bills_count_suffix: 'חשבונות',
                 all_paid_message: 'הכל שולם! אין חשבונות ממתינים.',
+                welcome_no_bills_message: 'ברוכים הבאים! עדיין אין לכם חשבונות. העלו את החשבון הראשון שלכם כדי להתחיל.',
                 total_paid_label: 'סך הכל שולם',
 
                 regular_bills_title: 'חשבונות שוטפים',
@@ -239,6 +240,7 @@ document.addEventListener('alpine:init', () => {
                 pending_total_label: 'Total pending',
                 bills_count_suffix: 'bills',
                 all_paid_message: 'All paid! No pending bills.',
+                welcome_no_bills_message: "Welcome! You don't have any bills yet. Upload your first bill to get started.",
                 total_paid_label: 'Total paid',
 
                 regular_bills_title: 'Regular Bills',

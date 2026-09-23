@@ -52,6 +52,20 @@ async def signup_page(request: Request):
     return templates.TemplateResponse(request=request, name="signup.html", context={})
 
 
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse(request=request, name="forgot_password.html", context={})
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request):
+    # token isn't read/validated here - this route only renders the form;
+    # reset_password.html itself pulls ?token= from the URL via
+    # URLSearchParams and sends it with the actual POST /auth/reset-password
+    # call, which is where it's actually checked.
+    return templates.TemplateResponse(request=request, name="reset_password.html", context={})
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
@@ -129,6 +143,14 @@ async def dashboard(
 
     total_paid = await get_total_paid(db, user_id)
 
+    # Distinguishes "brand new account, nothing uploaded yet" from "every
+    # bill is paid" - both leave pending_by_currency empty, but they need
+    # different empty-state messaging (see dashboard.html's summary
+    # section). No extra query for this: regular_bills/ticket_bills above
+    # are each already a LIMIT-25 fetch of this user's own bills, so
+    # either being non-empty already proves at least one bill exists.
+    has_any_bills = bool(regular_bills or ticket_bills)
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -138,6 +160,7 @@ async def dashboard(
             "pending_by_currency": pending_by_currency,
             "regular_bills": regular_bills,
             "ticket_bills": ticket_bills,
+            "has_any_bills": has_any_bills,
             "userway_account_id": settings.userway_account_id,
             "telegram_bot_username": settings.telegram_bot_username,
             "telegram_linked": current_user.telegram_chat_id is not None,

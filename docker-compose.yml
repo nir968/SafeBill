@@ -93,5 +93,32 @@ services:
       redis:
         condition: service_healthy
 
+  telegram-bot:
+    # Own Dockerfile, not `build: .` (the default ./Dockerfile api/worker
+    # use) - see Dockerfile.bot's own comment for why: telegram_bot.py has
+    # a separate requirements-bot.txt (pyTelegramBotAPI/requests, neither
+    # of which is in requirements.txt) and isn't even copied into the main
+    # image at all (that Dockerfile only COPYs app/). context: . still
+    # means this builds from the current directory, exactly as asked -
+    # only the Dockerfile actually used within that context differs.
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file:
+      - .env
+    environment:
+      # Overrides BACKEND_URL's own http://localhost:8000 default (see
+      # telegram_bot.py) - inside Docker's network "localhost" would mean
+      # this container itself, which has no API server of its own
+      # listening on port 8000; api is reachable by its service name.
+      BACKEND_URL: http://api:8000
+    depends_on:
+      - api
+    # No `volumes:` mount (unlike api's own ./:/app) - telegram_bot.py has
+    # no --reload-style hot-reloading of its own (it's a plain polling
+    # script, not uvicorn), so a live-mounted source file wouldn't restart
+    # anything on a change anyway; same reasoning already applies to
+    # worker above, which also has no such mount.
+
 volumes:
   pgdata:

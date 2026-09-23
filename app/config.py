@@ -77,6 +77,24 @@ class Settings(BaseSettings):
     # via TELEGRAM_BOT_USERNAME in .env - without the @ prefix.
     telegram_bot_username: str = ""
 
+    # Optional, same "opt-in, feature degrades gracefully" pattern as
+    # userway_account_id/telegram_bot_username above - see
+    # app/email_client.py::is_configured(). Missing these doesn't fail
+    # the app at startup, or even fail a forgot-password request:
+    # POST /auth/forgot-password falls back to logging the reset link
+    # (its original mocked-email behavior) whenever is_configured() is
+    # False, so a deployment that hasn't set up Gmail yet keeps working.
+    # smtp_username and from_email are typically the same Gmail address;
+    # smtp_password must be a Gmail *App Password* (myaccount.google.com
+    # -> Security -> 2-Step Verification -> App Passwords), not the
+    # actual account password - Gmail rejects normal password auth for
+    # SMTP entirely.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    from_email: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

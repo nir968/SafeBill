@@ -2,7 +2,7 @@
 <html dir="rtl" lang="he">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>הרשמה - SafeBill</title>
 
     <!-- Open Graph - see login.html's own comment on this block, same
@@ -19,8 +19,15 @@
     <meta name="twitter:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
     <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
 
+    <!-- See login.html's own comment on this block for the full
+         reasoning (standalone-mode launch, status bar overlay, and why
+         it needs viewport-fit=cover above + the safe-area padding in
+         dashboard.css). -->
     <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
 
     <script src="https://cdn.tailwindcss.com"></script>

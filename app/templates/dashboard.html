@@ -2,7 +2,7 @@
 <html dir="rtl" lang="he">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>לוח הבקרה - SafeBill</title>
 
     <!-- No Open Graph tags here on purpose, unlike login.html/signup.html -
@@ -14,8 +14,16 @@
          though - "Add to Home Screen" reads whatever page is loaded in
          Safari at the moment, which for a logged-in user is usually
          this one. -->
+    <!-- See login.html's own comment on this block for the full
+         reasoning. This page in particular has the sticky <header> that
+         would otherwise sit directly under the iOS status bar overlay in
+         standalone mode - see the safe-area-inset-top rule in
+         dashboard.css, which this page (like every other) already loads. -->
     <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -375,7 +383,13 @@
                     </p>
                 </div>
             </div>
-            {% else %}
+            {% elif has_any_bills %}
+            <!-- Every bill this user has is paid - a real success state,
+                 not the same thing as never having uploaded anything (see
+                 the sibling branch below). has_any_bills comes from
+                 GET /dashboard (app/routers/web.py); pending_by_currency
+                 alone can't tell these two cases apart, since it's empty
+                 in both. -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="glass-card rounded-2xl p-8 text-center select-none">
                     <p class="text-4xl mb-2">✅</p>
@@ -387,6 +401,15 @@
                         {{ total_paid|money('ILS') }}
                     </p>
                 </div>
+            </div>
+            {% else %}
+            <!-- Brand new account, nothing uploaded yet - no Total Paid
+                 card here (it would just read ₪0.00, which reads as
+                 "nothing to report" rather than "welcome", the opposite
+                 of what an empty state should do). -->
+            <div class="glass-card rounded-2xl p-8 text-center select-none">
+                <p class="text-4xl mb-2">📤</p>
+                <p class="text-slate-300 font-medium" x-text="$store.app.t('welcome_no_bills_message')"></p>
             </div>
             {% endif %}
         </section>

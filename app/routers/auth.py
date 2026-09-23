@@ -24,15 +24,17 @@ query parameter. Two different stories apply when migrating them:
   reflexively just because get_current_user now exists.
 """
 
+import logging
 import re
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import email_client
 from app.auth import (
     COOKIE_NAME,
     create_access_token,
@@ -44,6 +46,8 @@ from app.auth import (
 from app.config import settings
 from app.db import get_db
 from app.models import User
+
+logger = logging.getLogger("safebill.auth")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -190,6 +194,131 @@ async def login(
 async def logout(response: Response):
     response.delete_cookie(COOKIE_NAME)
     return {"status": "logged out"}
+
+
+# --- Password reset -------------------------------------------------------
+#
+# Same Redis-backed single-use-token pattern as Telegram account linking
+# below (request.app.state.redis, a real redis.asyncio.Redis client - see
+# that section's own comment on why ArqRedis supports this directly) -
+# reused rather than inventing a second mechanism, or a DB table this
+# project has no migration tooling to add cleanly (see main.py's lifespan:
+# create_all only, no Alembic).
+#
+# No real email delivery yet - logger.info stands in for "send an email"
+# for now (the reset link lands in the server's own logs/console, per
+# what was asked). Swap that one line for a real mailer later; nothing
+# else in this flow needs to change to support it.
+#
+# Known gap, not fixed here: no rate limiting on /forgot-password, so
+# nothing stops a caller from spamming reset-token generation for an
+# email over and over. Fine for a first version of a mocked-email flow;
+# worth adding (e.g. a short per-email Redis cooldown) before this ever
+# sends a real email that costs something per send.
+
+_RESET_TOKEN_TTL_SECONDS = 1800  # 30 minutes - long enough to check an inbox
+_RESET_TOKEN_REDIS_PREFIX = "pwd_reset:"
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Always the same response whether or not the email actually has an
+    account - same anti-enumeration principle already applied to
+    POST /login (see its own comment): distinguishing the two here would
+    let a caller use this endpoint to probe which emails are registered.
+    email_client.send_password_reset_email is only ever scheduled - never
+    called directly - inside the `if user is not None` branch below, so
+    that principle holds regardless of how sending itself behaves.
+
+    background_tasks.add_task, not `await email_client.send_...(...)`
+    directly: Starlette runs registered background tasks only *after*
+    the response has already been sent to the browser, so this request
+    returns 200 immediately without ever waiting on the SMTP round trip -
+    including its own internal retries (see email_client.send_email),
+    which alone could take several seconds against a slow/unreachable
+    server. A route awaiting the send directly would make the caller's
+    fetch() sit there for however long that takes, or fail, for
+    something the response body was never going to reveal anyway.
+    """
+    email = _normalize_email(payload.email)
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    # hashed_password is None for a Telegram-only account that never set
+    # a password (see POST /login's identical check) - nothing to reset,
+    # and email is already unique-or-null so this can only ever match a
+    # genuine web-signup account anyway.
+    if user is not None and user.hashed_password is not None:
+        token = secrets.token_urlsafe(32)
+        await request.app.state.redis.set(
+            f"{_RESET_TOKEN_REDIS_PREFIX}{token}", str(user.id), ex=_RESET_TOKEN_TTL_SECONDS
+        )
+        reset_link = f"{request.url.scheme}://{request.url.netloc}/reset-password?token={token}"
+
+        if email_client.is_configured():
+            background_tasks.add_task(email_client.send_password_reset_email, email, reset_link)
+        else:
+            # Same mocked-email behavior this endpoint always had, kept
+            # as a fallback rather than removed - lets forgot-password
+            # keep working the moment SMTP_USERNAME/SMTP_PASSWORD/
+            # FROM_EMAIL aren't set yet (fresh local dev, CI, a
+            # deployment mid-setup), instead of a background task
+            # failing loudly against smtp.gmail.com with an empty
+            # username/password.
+            logger.info("SMTP not configured - reset link for %s: %s", email, reset_link)
+
+    return {
+        "message": "אם קיים חשבון עם כתובת האימייל הזו, נשלח אליו קישור לאיפוס הסיסמה"
+    }
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: Request,
+    response: Response,
+    payload: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_password_strength(payload.password)
+
+    redis = request.app.state.redis
+    key = f"{_RESET_TOKEN_REDIS_PREFIX}{payload.token}"
+    raw_user_id = await redis.get(key)
+    if raw_user_id is None:
+        raise HTTPException(400, "קישור איפוס הסיסמה פג תוקף או שאינו תקין - בקשו קישור חדש")
+    # Deleted immediately, before doing anything else - single-use, same
+    # reasoning as the Telegram link token below.
+    await redis.delete(key)
+
+    user = await db.get(User, int(raw_user_id))
+    if user is None:
+        raise HTTPException(404, "החשבון לא נמצא")
+
+    user.hashed_password = hash_password(payload.password)
+    await db.commit()
+
+    # Auto-login, same reasoning as signup's own auto-login above: the
+    # user just proved control of both their email (via the token) and a
+    # fresh password, no reason to make them log in a second time
+    # immediately after.
+    _set_auth_cookie(response, request, user.id)
+
+    return {"id": user.id, "email": user.email}
 
 
 # --- Telegram account linking -------------------------------------------
