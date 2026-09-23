@@ -8,7 +8,14 @@ arq==0.26.1
 tenacity==9.0.0
 anthropic>=0.70.0
 httpx>=0.27.0
-google-genai>=2.3.0
+# Pinned exactly, not left to float like the other hosted-provider SDKs
+# above - google-genai's `.aio.interactions.create()` surface (see
+# app/vision.py's GeminiVisionProvider) is new and actively evolving, and
+# an unpinned `>=2.3.0` here previously let a routine rebuild silently
+# pick up a newer release with different async-client/timeout behavior
+# in that code path, breaking bill scanning in production with no code
+# change on our side. Bump deliberately, not via a floating range.
+google-genai==2.8.0
 pypdfium2>=4.30.0
 Pillow>=10.0.0
 jinja2>=3.1.0

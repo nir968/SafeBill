@@ -369,9 +369,24 @@ class GeminiVisionProvider(VisionProvider):
 
     def __init__(self, model: str) -> None:
         self._model = model
-        # Zero-arg client: resolves GEMINI_API_KEY (or GOOGLE_API_KEY) from
-        # the environment. Never hardcode a key here.
-        self._client = genai.Client()
+        # Resolves GEMINI_API_KEY (or GOOGLE_API_KEY) from the environment -
+        # never hardcode a key here. http_options.timeout is set explicitly
+        # (in ms) rather than left at the SDK's own default: the caller
+        # (app/routers/sanitizer.py) already wraps extract_bill in
+        # asyncio.wait_for(timeout=settings.vlm_timeout_seconds) as an
+        # outer safety net, but that only cancels the call - it doesn't
+        # make the underlying httpx/aiohttp request itself give up any
+        # faster, and a slow-to-cancel transport can make the observed
+        # wall-clock time noticeably exceed the configured timeout. Setting
+        # the SDK's own timeout to the same value makes it the one that
+        # actually fires first, so failures are fast and predictable
+        # instead of depending on cancellation propagating cleanly through
+        # the SDK's own client layers.
+        self._client = genai.Client(
+            http_options=genai.types.HttpOptions(
+                timeout=int(settings.vlm_timeout_seconds * 1000)
+            )
+        )
 
     async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult:
         media_type = _sniff_image_media_type(image_bytes)
