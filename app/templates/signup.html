@@ -13,18 +13,18 @@
     <meta property="og:url" content="{{ request.url }}">
     <meta property="og:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
     <meta property="og:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
-    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
     <meta name="twitter:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
-    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
 
     <!-- See login.html's own comment on this block for the full
          reasoning (standalone-mode launch, status bar overlay, and why
          it needs viewport-fit=cover above + the safe-area padding in
          dashboard.css). -->
-    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

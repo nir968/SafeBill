@@ -26,6 +26,23 @@ router = APIRouter(tags=["web"])
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
+# Cache-busting suffix for the brand icon files (?v=<mtime>) appended to
+# every apple-touch-icon/og-image URL in the templates below. iOS caches
+# apple-touch-icon aggressively per-URL and often won't refetch it after
+# the underlying file changes - keying off the file's own mtime means any
+# future replacement of these two files automatically gets a new URL and
+# a guaranteed-fresh fetch, with zero manual version bumping. Computed
+# once at import time (not per-request): these files only change on a
+# deploy, which already re-imports this module.
+_STATIC_IMG_DIR = Path(__file__).resolve().parent.parent / "static" / "img"
+_ICON_VERSION = int(
+    max(
+        (_STATIC_IMG_DIR / "apple-touch-icon.png").stat().st_mtime,
+        (_STATIC_IMG_DIR / "og-image.jpg").stat().st_mtime,
+    )
+)
+templates.env.globals["icon_version"] = _ICON_VERSION
+
 # Same table, duplicated (not imported) from telegram_bot.py /
 # app/telegram_client.py - a small, fixed lookup, kept independent per
 # module rather than adding a cross-import between otherwise-unrelated

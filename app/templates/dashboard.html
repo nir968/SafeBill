@@ -19,8 +19,8 @@
          would otherwise sit directly under the iOS status bar overlay in
          standalone mode - see the safe-area-inset-top rule in
          dashboard.css, which this page (like every other) already loads. -->
-    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

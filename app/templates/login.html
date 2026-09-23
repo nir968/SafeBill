@@ -17,11 +17,11 @@
     <meta property="og:url" content="{{ request.url }}">
     <meta property="og:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
     <meta property="og:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
-    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
     <meta name="twitter:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
-    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}">
+    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
 
     <!-- iOS "Add to Home Screen" - apple-touch-icon controls the actual
          icon (two link tags: an unsized one as a general fallback, plus
@@ -40,8 +40,8 @@
          set - without that meta flag iOS reports the safe-area inset as
          zero and the padding would be a no-op. Plain favicon alongside
          for regular browser tabs. -->
-    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
     <meta name="apple-mobile-web-app-title" content="SafeBill">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
