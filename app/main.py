@@ -390,9 +390,21 @@ async def export_bills(
     )
     bills = result.scalars().all()
 
+    # Hebrew headers/status labels, not the raw internal column
+    # names/enum values - matches what the user actually sees on the
+    # dashboard table (see th_institution/status_paid etc. in
+    # app/static/js/dashboard.js) rather than exposing implementation
+    # details in a report meant to be read, not parsed.
+    status_labels = {
+        "paid": "שולם",
+        "analyzed": "פתוח",
+        "extraction_failed": "נדרש עדכון ידני",
+        "pending_analysis": "בעיבוד",
+    }
+
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["institution", "amount", "currency", "due_date", "status"])
+    writer.writerow(["מוסד", "סכום", "מטבע", "תאריך יעד", "קטגוריה", "סטטוס"])
     for bill in bills:
         writer.writerow(
             [
@@ -400,7 +412,8 @@ async def export_bills(
                 float(bill.amount),
                 bill.currency,
                 bill.due_date.isoformat() if bill.due_date else "",
-                bill.status,
+                bill.category or "",
+                status_labels.get(bill.status, bill.status),
             ]
         )
 
@@ -414,5 +427,7 @@ async def export_bills(
     return Response(
         content=csv_content,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=safebill_export_{user_id}.csv"},
+        headers={
+            "Content-Disposition": f"attachment; filename=safebill_export_{date.today().isoformat()}.csv"
+        },
     )

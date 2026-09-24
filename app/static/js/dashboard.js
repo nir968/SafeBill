@@ -108,6 +108,7 @@ document.addEventListener('alpine:init', () => {
 
                 regular_bills_title: 'חשבונות שוטפים',
                 tickets_title: 'דוחות וקנסות',
+                export_csv_button: 'ייצא לקובץ',
                 th_institution: 'מוסד',
                 th_amount: 'סכום',
                 th_due_date: 'תאריך יעד',
@@ -245,6 +246,7 @@ document.addEventListener('alpine:init', () => {
 
                 regular_bills_title: 'Regular Bills',
                 tickets_title: 'Fines & Tickets',
+                export_csv_button: 'Export to Excel',
                 th_institution: 'Institution',
                 th_amount: 'Amount',
                 th_due_date: 'Due Date',

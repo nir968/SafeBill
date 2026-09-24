@@ -433,7 +433,7 @@
                             <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_category')"></th>
                             <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_reference')"></th>
                             <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_actions')"></th>
-                            <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_payment')"></th>
+                            <th class="px-4 py-3 text-center font-semibold text-slate-300" x-text="$store.app.t('th_payment')"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
@@ -510,13 +510,20 @@
                                     </svg>
                                 </button>
                             </td>
-                            <td class="px-4 py-3 whitespace-nowrap">
+                            <td class="px-4 py-3 whitespace-nowrap text-center">
                                 {% if bill.status != "paid" %}
                                 <!-- Quick-pay: PUT /bills/{id}/pay directly
                                      from the row, no modal - see quickPay()
                                      in app/static/js/dashboard.js. Hidden
                                      once a bill is already paid, since
-                                     marking it paid again is a no-op. -->
+                                     marking it paid again is a no-op. A
+                                     proper circular action button, not bare
+                                     icon-as-text - resting border/background
+                                     so it reads as clickable even before
+                                     hover, cursor-pointer explicit (native
+                                     <button> defaults to cursor:default, not
+                                     pointer, unlike <a>), bright green +
+                                     scale on hover for obvious feedback. -->
                                 <button
                                     type="button"
                                     @click="quickPay({{ bill.id }})"
@@ -524,9 +531,9 @@
                                     :aria-busy="payingBillId === {{ bill.id }}"
                                     :aria-label="$store.app.t('mark_paid_aria')"
                                     :title="$store.app.t('mark_paid_aria')"
-                                    class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 transition"
+                                    class="cursor-pointer inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/5 text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition"
                                 >
-                                    <svg x-show="payingBillId !== {{ bill.id }}" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <svg x-show="payingBillId !== {{ bill.id }}" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M20 6 9 17l-5-5" />
                                     </svg>
                                     <span x-show="payingBillId === {{ bill.id }}" x-cloak class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" aria-hidden="true"></span>
@@ -550,7 +557,23 @@
         {% endmacro %}
 
         <section class="animate-fade-in-up">
-            <h2 class="text-lg font-semibold text-slate-100 mb-4" x-text="$store.app.t('regular_bills_title')"></h2>
+            <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-slate-100" x-text="$store.app.t('regular_bills_title')"></h2>
+                <!-- Plain navigation (not a fetch()/@click handler) -
+                     GET /bills/export sets its own Content-Disposition:
+                     attachment header (see app/main.py), so the browser
+                     downloads the file on its own; no JS needed to
+                     trigger it. -->
+                <a
+                    href="/bills/export"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-white/10 text-sm text-slate-300 hover:text-white hover:border-white/20 transition"
+                >
+                    <span x-text="$store.app.t('export_csv_button')"></span>
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+                    </svg>
+                </a>
+            </div>
             {{ bill_table(regular_bills, '🧾', 'no_bills_saved') }}
         </section>
 
