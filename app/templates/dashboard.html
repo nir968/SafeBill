@@ -43,60 +43,94 @@
     <a href="#main-content" class="skip-link select-text" x-text="$store.app.t('skip_to_content')">דלג לתוכן הראשי</a>
 
     <header class="glass-strong sticky top-0 z-40">
-        <div class="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center flex-shrink-0">
-                <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center gap-2 sm:gap-3">
+            <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
                     <path d="m9 12 2 2 4-4" />
                 </svg>
             </div>
-            <div>
-                <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
-                <p class="text-sm text-slate-400" x-text="$store.app.t('dashboard_subtitle')"></p>
+            <!-- min-w-0 lets this shrink/truncate instead of forcing the
+                 row to overflow - a flex item defaults to a min-width of
+                 its own content size, which on a narrow phone is exactly
+                 what pushes the action buttons off-screen. -->
+            <div class="min-w-0">
+                <h1 class="text-lg sm:text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent truncate">SafeBill</h1>
+                <p class="text-sm text-slate-400 truncate" x-text="$store.app.t('dashboard_subtitle')"></p>
             </div>
-            <button
-                type="button"
-                @click="$store.app.toggleLang()"
-                class="ms-auto text-sm text-slate-300 hover:text-white transition"
-            >
-                🌐 EN / עב
-            </button>
-            <button
-                type="button"
-                @click="open = true"
-                class="text-sm text-slate-300 hover:text-white transition"
-            >
-                <span x-text="$store.app.t('about_link')"></span>
-            </button>
-            <!-- Only rendered when a bot username is actually configured
-                 (see settings.telegram_bot_username in app/config.py) -
-                 same "opt-in feature hides itself" pattern as the
-                 UserWay widget below, rather than showing a button that
-                 would just 503 on click. -->
-            {% if telegram_bot_username %}
-            <button
-                type="button"
-                x-data="telegramLink()"
-                @click="connect()"
-                :disabled="connecting"
-                class="text-sm text-slate-300 hover:text-white transition disabled:opacity-50"
-            >
-                <span x-show="connecting" x-cloak x-text="$store.app.t('telegram_connecting')"></span>
-                <span x-show="!connecting" x-text="$store.app.t('{{ 'telegram_connected' if telegram_linked else 'telegram_connect' }}')"></span>
-            </button>
-            {% endif %}
-            <!-- Own tiny x-data rather than a method on aboutModal() -
-                 that component is scoped to "about modal open/closed
-                 state", and logout isn't that, even though it's the
-                 nearest existing component in the DOM. -->
-            <button
-                type="button"
-                x-data="logoutButton()"
-                @click="logout()"
-                class="text-sm text-slate-300 hover:text-white transition"
-            >
-                <span x-text="$store.app.t('logout')"></span>
-            </button>
+
+            <!-- Icon-only below sm, icon+label from sm up - not a
+                 hamburger menu: every one of these four actions (language,
+                 about, Telegram link, logout) is a single tap a user
+                 reaches for often enough that hiding them behind an extra
+                 menu-open tap would cost more than the space it saves. -->
+            <div class="ms-auto flex items-center gap-0.5 sm:gap-1.5">
+                <button
+                    type="button"
+                    @click="$store.app.toggleLang()"
+                    :aria-label="$store.app.t('toggle_language_aria')"
+                    :title="$store.app.t('toggle_language_aria')"
+                    class="p-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition"
+                >
+                    <span aria-hidden="true">🌐</span>
+                    <span class="hidden sm:inline">EN / עב</span>
+                </button>
+                <button
+                    type="button"
+                    @click="open = true"
+                    :aria-label="$store.app.t('about_link')"
+                    :title="$store.app.t('about_link')"
+                    class="inline-flex items-center gap-1.5 p-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition"
+                >
+                    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 16v-4M12 8h.01" />
+                    </svg>
+                    <span class="hidden sm:inline" x-text="$store.app.t('about_link')"></span>
+                </button>
+                <!-- Only rendered when a bot username is actually configured
+                     (see settings.telegram_bot_username in app/config.py) -
+                     same "opt-in feature hides itself" pattern as the
+                     UserWay widget below, rather than showing a button that
+                     would just 503 on click. -->
+                {% if telegram_bot_username %}
+                <button
+                    type="button"
+                    x-data="telegramLink()"
+                    @click="connect()"
+                    :disabled="connecting"
+                    :aria-label="connecting ? $store.app.t('telegram_connecting') : $store.app.t('{{ 'telegram_connected' if telegram_linked else 'telegram_connect' }}')"
+                    class="inline-flex items-center gap-1.5 p-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 disabled:opacity-50 transition"
+                >
+                    <svg x-show="!connecting" class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m22 2-7 20-4-9-9-4Z" />
+                        <path d="M22 2 11 13" />
+                    </svg>
+                    <span x-show="connecting" x-cloak class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin inline-block flex-shrink-0" aria-hidden="true"></span>
+                    <span class="hidden sm:inline" x-show="connecting" x-cloak x-text="$store.app.t('telegram_connecting')"></span>
+                    <span class="hidden sm:inline" x-show="!connecting" x-text="$store.app.t('{{ 'telegram_connected' if telegram_linked else 'telegram_connect' }}')"></span>
+                </button>
+                {% endif %}
+                <!-- Own tiny x-data rather than a method on aboutModal() -
+                     that component is scoped to "about modal open/closed
+                     state", and logout isn't that, even though it's the
+                     nearest existing component in the DOM. -->
+                <button
+                    type="button"
+                    x-data="logoutButton()"
+                    @click="logout()"
+                    :aria-label="$store.app.t('logout')"
+                    :title="$store.app.t('logout')"
+                    class="inline-flex items-center gap-1.5 p-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition"
+                >
+                    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <path d="M16 17l5-5-5-5" />
+                        <path d="M21 12H9" />
+                    </svg>
+                    <span class="hidden sm:inline" x-text="$store.app.t('logout')"></span>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -423,7 +457,15 @@
         <div class="glass-card rounded-2xl overflow-hidden">
             {% if bills %}
             <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+                <!-- min-w-full, not w-full: w-full forces the table to
+                     exactly 100% of this overflow-x-auto container, so on
+                     a narrow phone the browser had nothing to scroll - it
+                     just squeezed all 8 whitespace-nowrap columns to fit,
+                     clipping Actions/Payment instead of the table growing
+                     wide enough to swipe to them. min-w-full still fills
+                     the container on desktop (where 8 columns fit fine)
+                     but lets the table grow past it when they don't. -->
+                <table class="min-w-full text-sm">
                     <thead class="bg-white/5 border-b border-white/10">
                         <tr>
                             <th class="px-4 py-3 text-start font-semibold text-slate-300" x-text="$store.app.t('th_institution')"></th>

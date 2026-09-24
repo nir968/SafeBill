@@ -53,6 +53,7 @@ document.addEventListener('alpine:init', () => {
                 dashboard_subtitle: 'לוח בקרה חכם',
                 about_link: 'אודות',
                 logout: 'התנתקות',
+                toggle_language_aria: 'החלפת שפה',
 
                 about_title: 'אודות SafeBill',
                 about_body:
@@ -190,6 +191,7 @@ document.addEventListener('alpine:init', () => {
                 dashboard_subtitle: 'Smart Dashboard',
                 about_link: 'About',
                 logout: 'Log Out',
+                toggle_language_aria: 'Toggle language',
 
                 about_title: 'About SafeBill',
                 about_body:
