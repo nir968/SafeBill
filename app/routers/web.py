@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import AgentError, ask_agent
 from app.auth import get_authorized_user_id, get_current_user_for_page
+from app.cache import get_or_set
 from app.config import settings
 from app.db import get_db
 from app.models import Bill, User
@@ -108,27 +109,33 @@ async def dashboard(
     session's own id, or a bot request carrying the internal API key.
     """
     user_id = current_user.id
+    redis = request.app.state.redis
 
     # Per-currency, not a single blended sum - same reasoning as
     # /bills/stats: a $50 bill and a ₪50 bill do not add up to "100" of
     # anything real.
-    pending_result = await db.execute(
-        select(Bill.currency, func.count(Bill.id), func.sum(Bill.amount))
-        .where(
-            Bill.user_id == user_id,
-            Bill.status != "paid",
-            # A placeholder bill (vision extraction was unavailable at
-            # upload time - see POST /bills/upload) isn't a real pending
-            # charge, just an unresolved $0 row - counting it here would
-            # inflate "pending" with something that was never a debt.
-            Bill.status != "extraction_failed",
+    async def load_pending_by_currency():
+        pending_result = await db.execute(
+            select(Bill.currency, func.count(Bill.id), func.sum(Bill.amount))
+            .where(
+                Bill.user_id == user_id,
+                Bill.status != "paid",
+                # A placeholder bill (vision extraction was unavailable at
+                # upload time - see POST /bills/upload) isn't a real pending
+                # charge, just an unresolved $0 row - counting it here would
+                # inflate "pending" with something that was never a debt.
+                Bill.status != "extraction_failed",
+            )
+            .group_by(Bill.currency)
         )
-        .group_by(Bill.currency)
+        return [
+            {"currency": currency, "count": count, "total": float(total)}
+            for currency, count, total in pending_result.all()
+        ]
+
+    pending_by_currency = await get_or_set(
+        redis, user_id, "pending_by_currency", load_pending_by_currency
     )
-    pending_by_currency = [
-        {"currency": currency, "count": count, "total": float(total)}
-        for currency, count, total in pending_result.all()
-    ]
     pending_count = sum(row["count"] for row in pending_by_currency)
 
     # Two independent "most recent 25" queries, not one shared query split
@@ -158,7 +165,9 @@ async def dashboard(
     )
     ticket_bills = ticket_result.scalars().all()
 
-    total_paid = await get_total_paid(db, user_id)
+    total_paid = await get_or_set(
+        redis, user_id, "total_paid", lambda: get_total_paid(db, user_id)
+    )
 
     # Distinguishes "brand new account, nothing uploaded yet" from "every
     # bill is paid" - both leave pending_by_currency empty, but they need

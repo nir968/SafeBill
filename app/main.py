@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models  # noqa: F401 -- registers tables on Base.metadata
 from app.auth import get_authorized_user_id
+from app.cache import get_or_set, invalidate_user_stats
 from app.config import settings
 from app.crud import get_or_create_user
 from app.db import Base, engine, get_db
@@ -76,7 +77,9 @@ async def get_recent_bills(
 
 @app.get("/bills/stats")
 async def get_stats(
-    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+    request: Request,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Returns a per-currency breakdown, not a single blended total - once
@@ -88,13 +91,15 @@ async def get_stats(
     """
     await get_or_create_user(db, user_id)
 
-    result = await db.execute(
-        select(Bill.currency, func.sum(Bill.amount))
-        .where(Bill.user_id == user_id)
-        .group_by(Bill.currency)
-    )
-    totals = {currency: float(total) for currency, total in result.all()}
+    async def load_totals():
+        result = await db.execute(
+            select(Bill.currency, func.sum(Bill.amount))
+            .where(Bill.user_id == user_id)
+            .group_by(Bill.currency)
+        )
+        return {currency: float(total) for currency, total in result.all()}
 
+    totals = await get_or_set(request.app.state.redis, user_id, "stats_totals", load_totals)
     return {"totals": totals}
 
 
@@ -128,7 +133,9 @@ async def search_bills(
 
 @app.get("/bills/pending")
 async def get_pending_bills(
-    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+    request: Request,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     "Pending" currently means status != "paid" - as specified. Worth
@@ -141,17 +148,23 @@ async def get_pending_bills(
     bot command, or redefining "pending" as due_date >= today. Flagging
     this rather than guessing which one you want.
     """
-    result = await db.execute(
-        select(Bill)
-        .where(Bill.user_id == user_id, Bill.status != "paid")
-        .order_by(Bill.id.desc())
-    )
-    return [_serialize_bill(bill) for bill in result.scalars().all()]
+
+    async def load_pending():
+        result = await db.execute(
+            select(Bill)
+            .where(Bill.user_id == user_id, Bill.status != "paid")
+            .order_by(Bill.id.desc())
+        )
+        return [_serialize_bill(bill) for bill in result.scalars().all()]
+
+    return await get_or_set(request.app.state.redis, user_id, "pending_bills", load_pending)
 
 
 @app.delete("/bills/last")
 async def delete_last_bill(
-    user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+    request: Request,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(Bill).where(Bill.user_id == user_id).order_by(Bill.id.desc()).limit(1)
@@ -163,6 +176,7 @@ async def delete_last_bill(
     deleted = _serialize_bill(last_bill)
     await db.delete(last_bill)
     await db.commit()
+    await invalidate_user_stats(request.app.state.redis, user_id)
     return {"status": "deleted", "id": deleted["id"], "institution": deleted["institution"]}
 
 
@@ -185,6 +199,7 @@ async def _get_owned_bill(db: AsyncSession, bill_id: int, user_id: int) -> Bill:
 
 @app.put("/bills/{bill_id}/pay")
 async def pay_bill(
+    request: Request,
     bill_id: int,
     asmachta: str | None = None,
     user_id: int = Depends(get_authorized_user_id),
@@ -195,11 +210,13 @@ async def pay_bill(
     bill.asmachta = asmachta
     await db.commit()
     await db.refresh(bill)
+    await invalidate_user_stats(request.app.state.redis, user_id)
     return _serialize_bill(bill)
 
 
 @app.put("/bills/{bill_id}/amount")
 async def update_bill_amount(
+    request: Request,
     bill_id: int,
     new_amount: Decimal,
     user_id: int = Depends(get_authorized_user_id),
@@ -221,6 +238,7 @@ async def update_bill_amount(
     bill.amount = new_amount
     await db.commit()
     await db.refresh(bill)
+    await invalidate_user_stats(request.app.state.redis, user_id)
     return _serialize_bill(bill)
 
 
@@ -320,6 +338,7 @@ async def create_bill(
     await db.refresh(bill)
 
     redis = request.app.state.redis
+    await invalidate_user_stats(redis, user_id)
     await redis.enqueue_job("analyze_bill", bill.id)
 
     return _serialize_bill(bill)
@@ -327,6 +346,7 @@ async def create_bill(
 
 @app.patch("/bills/{bill_id}")
 async def update_bill(
+    request: Request,
     bill_id: int,
     payload: BillUpdateRequest,
     user_id: int = Depends(get_authorized_user_id),
@@ -360,12 +380,16 @@ async def update_bill(
     bill.asmachta = payload.asmachta
     await db.commit()
     await db.refresh(bill)
+    await invalidate_user_stats(request.app.state.redis, user_id)
     return _serialize_bill(bill)
 
 
 @app.delete("/bills/{bill_id}")
 async def delete_bill(
-    bill_id: int, user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
+    request: Request,
+    bill_id: int,
+    user_id: int = Depends(get_authorized_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Permanent, not a soft-delete/status flip - matches DELETE /bills/last's
@@ -378,6 +402,7 @@ async def delete_bill(
     deleted = _serialize_bill(bill)
     await db.delete(bill)
     await db.commit()
+    await invalidate_user_stats(request.app.state.redis, user_id)
     return {"status": "deleted", "id": deleted["id"], "institution": deleted["institution"]}
 
 

@@ -1,0 +1,221 @@
+<!-- # ReClaim
+
+A smart receipt and refund management system. ReClaim tracks purchases against
+each store's refund and store-credit windows so you never miss a return
+deadline — without ever storing a photo of your receipt.
+
+## Architecture: Extract & Discard
+
+ReClaim's core privacy principle is **Extract & Discard**:
+
+1. A receipt image is uploaded (e.g. from a phone camera) and held only in memory.
+2. A hybrid extraction agent (`backend/services/extraction_agent.py`) processes it
+   two ways at once:
+   - `pyzbar` decodes any barcode/QR code locally, no network call involved.
+   - The image is base64-encoded and sent to the OpenAI Vision API
+     (`gpt-4o-mini` by default) with a prompt asking for `store_name`,
+     `total_amount`, and `purchase_date` as strict JSON.
+3. The extracted `store_name` is matched against the `stores` table
+   (case-insensitive) to pull that store's refund window, which is used to
+   compute `expiration_date`.
+4. The result is written to Postgres via the `Receipt` model.
+5. The original image is never written to disk, object storage, or any
+   database column — it is dropped once the request finishes.
+
+The result: the database holds only the text needed to track a refund or
+credit window, never the receipt photo itself.
+
+## Services
+
+`docker-compose.yml` orchestrates four services:
+
+| Service    | Description                                   | Port   |
+|------------|------------------------------------------------|--------|
+| `db`       | PostgreSQL 15                                   | 5432   |
+| `cache`    | Redis                                           | 6379   |
+| `backend`  | FastAPI (Python 3.11+)                          | 8000   |
+| `frontend` | React + Vite + TypeScript                       | 5173   |
+
+## Getting started
+
+1. Copy the example environment file, set your `OPENAI_API_KEY` (required for
+   receipt extraction — get one at platform.openai.com), and set a real
+   `SECRET_KEY` for JWT signing (generate one with
+   `python -c "import secrets; print(secrets.token_hex(32))"`):
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Build and start everything in the background:
+
+   ```bash
+   docker-compose up -d
+   ```
+
+3. Seed the built-in store list (refund/credit windows per retailer):
+
+   ```bash
+   docker-compose exec backend python -m backend.scripts.seed_stores
+   ```
+
+   The script is idempotent — safe to re-run any time the store list changes.
+
+4. Check that things are up:
+   - Backend health check: http://localhost:8000/health
+   - API docs: http://localhost:8000/docs
+   - Frontend: http://localhost:5173
+
+5. Stop everything:
+
+   ```bash
+   docker-compose down
+   ```
+
+### Authentication
+
+Register, then log in to get a JWT:
+
+```bash
+curl -X POST http://localhost:8000/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "nir@example.com", "password": "a-strong-password"}'
+
+curl -X POST http://localhost:8000/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "nir@example.com", "password": "a-strong-password"}'
+# -> {"access_token": "...", "token_type": "bearer"}
+```
+
+Passwords are hashed with bcrypt (via `passlib`) — the plaintext password is
+never stored. Tokens are signed with `SECRET_KEY`/`ALGORITHM` and expire
+after `ACCESS_TOKEN_EXPIRE_MINUTES` (default 24h).
+
+`GET /me` returns the signed-in user's own record (same shape as
+`/register`'s response) — the frontend calls this on load to restore the
+session from a stored token.
+
+### Uploading a receipt
+
+`POST /upload-receipt/` is authenticated — pass the JWT from `/login` as a
+Bearer token. The receipt is saved under whichever user the token identifies;
+there's no separate `user_id` field to pass. It returns the extracted and
+saved receipt:
+
+```bash
+curl -X POST http://localhost:8000/upload-receipt/ \
+  -H "Authorization: Bearer <access_token>" \
+  -F "file=@receipt.jpg"
+```
+
+Requests with a missing, malformed, or expired token get a 401. If the AI
+can't read a required field, the store name doesn't match a seeded store, or
+the OpenAI call fails, the endpoint returns a 4xx/5xx with a descriptive
+`detail` message instead of a partial save.
+
+`GET /receipts` (also authenticated) returns the signed-in user's active
+receipts, each with its matched store name and computed `expiration_date` —
+this is what the frontend dashboard lists.
+
+## Backend layout
+
+```
+backend/
+├── api/         # Routers / controllers
+│   ├── auth.py          # POST /register, POST /login, GET /me
+│   ├── receipts.py       # POST /upload-receipt/ (authenticated)
+│   └── dependencies.py   # get_current_user (JWT -> User)
+├── core/        # Settings, DB session setup, security.py (hashing + JWT)
+├── models/      # SQLAlchemy ORM models (User, Store, Receipt)
+├── schemas/     # Pydantic request/response schemas
+├── services/    # Business logic — extraction_agent.py is the hybrid AI agent
+├── scripts/     # One-off/maintenance scripts (seed_stores.py)
+└── main.py      # FastAPI app entry point
+```
+
+### Data model
+
+- **User** — account holder (`email`, `password_hash`, `created_at`).
+- **Store** — a retailer, with its own `default_refund_days` and
+  `default_credit_days` policy windows.
+- **Receipt** — a purchase, linked to a `User` and `Store`. Stores
+  `barcode_data` (the extracted barcode/invoice identifier) instead of an
+  image, plus `total_amount`, `purchase_date`, `expiration_date`, and
+  `status`.
+
+### Known gaps (backend)
+
+- No migrations — tables are created via `Base.metadata.create_all()` on
+  backend startup. Fine for this stage; swap in Alembic before this needs to
+  survive real schema changes on a populated database.
+- Receipt status (`active` / `refunded` / `refund_expired` / `credit_expired`)
+  is set to `active` on creation and isn't automatically transitioned yet —
+  that needs a scheduled job.
+- No token refresh/revocation — access tokens are stateless JWTs valid until
+  they expire; there's no logout or blocklist.
+- The `/upload-receipt/` and `/receipts` responses are plain dicts rather
+  than Pydantic response models (the `/register` and `/login` endpoints use
+  `backend/schemas/`, but `receipts.py` hasn't been migrated to match yet).
+
+## Frontend
+
+A mobile-first React app (Vite + TypeScript + Tailwind CSS v4) in `frontend/`:
+
+```
+frontend/src/
+├── api/axios.ts             # Axios instance; request interceptor attaches
+│                             # the JWT from localStorage to every call
+├── context/AuthContext.tsx  # Token storage; hydrates user via GET /me on load;
+│                             # login/register/logout
+├── components/
+│   ├── ProtectedRoute.tsx   # Redirects to /login when unauthenticated
+│   ├── UploadReceipt.tsx    # Camera capture -> POST /upload-receipt/
+│   └── DigitalBarcode.tsx   # Renders barcode_data as a scannable barcode
+├── pages/
+│   ├── Login.tsx / Register.tsx
+│   └── Dashboard.tsx        # Lists active receipts via GET /receipts
+└── App.tsx                  # Routes: /login, /register, / (Dashboard), /upload
+```
+
+Run it standalone (outside Docker) with the backend already running on
+`:8000`:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+`npm run build` type-checks with `tsc -b` and produces a production bundle
+via Vite.
+
+### Known gaps (frontend)
+
+- `npm audit` flags a moderate/high advisory in `esbuild` (bundled by Vite
+  5.x) that lets a malicious website read responses from your local dev
+  server (GHSA-67mh-4wv8-2f99). It only affects `vite dev`, not the
+  production build. The fix is a Vite 5 → 8 major upgrade, which wasn't done
+  here to avoid an unrelated toolchain churn — worth doing deliberately
+  before this is used somewhere the dev server is reachable by untrusted
+  networks.
+- This was validated with `tsc -b`, `vite build`, and by confirming the dev
+  server boots and serves every new file without a transform error — but not
+  with an actual interactive click-through in a browser (no browser
+  automation tool was available in this session). Recommend manually running
+  through register → login → scan → dashboard once before relying on it. -->
+
+
+docker compose up -d - מפעיל את הפרויקט ברקע (ה-d עומד על detached) ומשאיר את הטרמינל חופשי.
+
+docker compose build backend - אורז מחדש את השרת, קורא את הקוד המעודכן ומתקין ספריות חדשות מה-requirements.txt.
+
+docker compose build --no-cache backend - כופה על דוקר לבנות הכל מאפס ולהתעלם מהזיכרון השמור (מציל חיים כשדוקר עקשן ולא מזהה שינויים).
+
+docker compose down - מכבה ומחסל את הקונטיינרים שרצים כרגע, מנקה את השטח לקראת הפעלה טרייה.
+
+docker compose logs --tail 20 backend - שולף את 20 השורות האחרונות שמופסות בשרת, מושלם לחשיפת שגיאות שה-Frontend 
+מסתיר
+
+docker compose up --build - בונה מחדש את כל הקונטיינרים (לוקח את השינויים האחרונים בקוד ובקבצי ה-Docker) ומעלה את הפרויקט לאוויר במקביל.
+
+

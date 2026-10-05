@@ -93,6 +93,7 @@ document.addEventListener('alpine:init', () => {
 
                 error_unsupported_file: 'סוג קובץ לא נתמך. יש להעלות PDF, PNG או JPG.',
                 error_file_too_large: 'הקובץ גדול מדי.',
+                error_rate_limited: 'יותר מדי סריקות בדקה האחרונה. נסו שוב בעוד דקה.',
                 error_duplicate_bill: 'החשבון כבר קיים במערכת.',
                 error_not_a_bill: 'לא הצלחתי לזהות את זה כחשבון תקין.',
                 error_scan_unavailable: 'לא ניתן להעלות חשבון כעת, אפשר להוסיף את החשבון באופן ידני.',
@@ -232,6 +233,7 @@ document.addEventListener('alpine:init', () => {
 
                 error_unsupported_file: 'Unsupported file type. Please upload a PDF, PNG, or JPG.',
                 error_file_too_large: 'The file is too large.',
+                error_rate_limited: 'Too many scans in the last minute. Please try again in a minute.',
                 error_duplicate_bill: 'This bill already exists in the system.',
                 error_not_a_bill: "Couldn't recognize this as a valid bill.",
                 error_scan_unavailable: 'Cannot upload a bill right now - you can add the bill manually.',
@@ -463,6 +465,7 @@ document.addEventListener('alpine:init', () => {
                     409: t('error_duplicate_bill'),
                     422: t('error_not_a_bill'),
                     413: t('error_file_too_large'),
+                    429: t('error_rate_limited'),
                 };
                 if (messages[response.status]) {
                     this.errorMessage = messages[response.status];

@@ -7,10 +7,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_authorized_user_id
+from app.cache import invalidate_user_stats
 from app.config import settings
 from app.crud import get_or_create_user
 from app.db import get_db
 from app.models import Bill
+from app.rate_limit import limit_bill_scans
 from app.vision import BillValidationError, vision_client
 
 logger = logging.getLogger("safebill.sanitizer")
@@ -26,13 +28,16 @@ _UNEXTRACTED_INSTITUTION = "חשבון לא זוהה (נדרש עדכון ידנ
 # Bounds total concurrent VLM calls in this process — the backpressure valve
 # that keeps a traffic burst from turning into N simultaneous image buffers.
 # NOTE: this limit is per-process. If you scale the API to multiple uvicorn
-# workers or replicas, the effective ceiling is N_replicas * this value —
-# either divide accordingly or move to a distributed limiter (e.g. a Redis
-# token bucket) before scaling out.
+# workers or replicas, the effective ceiling is N_replicas * this value.
+# The per-user quota (limit_bill_scans, below) is Redis-backed and already
+# shared across replicas; this semaphore is the separate global
+# concurrency cap.
 _extraction_semaphore = asyncio.Semaphore(settings.max_concurrent_extractions)
 
 
-@router.post("/upload", status_code=202)
+# The rate limit runs as a dependency, so it's enforced before the request
+# body is read or Gemini is ever called.
+@router.post("/upload", status_code=202, dependencies=[Depends(limit_bill_scans)])
 async def upload_bill(
     request: Request,
     user_id: int = Depends(get_authorized_user_id),
@@ -131,6 +136,7 @@ async def upload_bill(
         db.add(bill)
         await db.commit()
         await db.refresh(bill)
+        await invalidate_user_stats(request.app.state.redis, user_id)
         return {
             "bill_id": bill.id,
             "status": "accepted",
@@ -176,9 +182,11 @@ async def upload_bill(
     await db.commit()
     await db.refresh(bill)
 
+    redis = request.app.state.redis
+    await invalidate_user_stats(redis, user_id)
+
     # Hand off to the Analyst Agent and return immediately — the caller
     # never blocks on DB-history analysis, only on the vision call above.
-    redis = request.app.state.redis
     await redis.enqueue_job("analyze_bill", bill.id)
 
     return {
