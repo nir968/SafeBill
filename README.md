@@ -33,11 +33,14 @@ SafeBill is an advanced full-stack application combining modern architecture wit
 2. Copy the environment variables template and configure your local secrets:
    ```bash
    cp .env.example .env
-
+    ```
 
 
 # 1. Start the system in the background (detached mode)
+```bash
 docker compose up -d
-
+```
 # 10. Stop and safely remove containers, networks, and default volumes
+```bash
 docker compose down
+```
