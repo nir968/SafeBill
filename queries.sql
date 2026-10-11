@@ -20,5 +20,3 @@ SELECT institution, amount, due_date
 FROM bills 
 WHERE due_date < CURRENT_DATE;
 
-INSERT INTO users (id, telegram_chat_id) 
-VALUES (945422313, 945422313);
