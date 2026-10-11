@@ -26,10 +26,10 @@ SafeBill is an advanced full-stack application combining modern architecture wit
 
 ---
 
-## 🚀 Getting Started & Docker Operations
+## 🚀 Getting Started & Docker Operations - Prerequisites
 
-### Prerequisites
-#  Ensure Docker and Docker Compose are installed on your machine.
+
+###  Ensure Docker and Docker Compose are installed on your machine.
 #  Copy the environment variables template and configure your local secrets:
    ```bash
    cp .env.example .env
