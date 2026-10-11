@@ -8,7 +8,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 import anthropic
-import httpx
 import pypdfium2 as pdfium
 from google import genai
 from google.genai import errors as genai_errors
@@ -26,7 +25,7 @@ class VisionExtractionError(Exception):
 
 class BillValidationError(VisionExtractionError):
     """The image is not a legible bill: wrong document type, too degraded to
-    read, or (Ollama/Gemini) a provider response that didn't parse into our
+    read, or (Gemini) a provider response that didn't parse into our
     schema at all."""
 
 
@@ -73,10 +72,9 @@ def _rasterize_pdf_first_page(pdf_bytes: bytes) -> bytes:
 
     Converting here, at the VisionSanitizerService layer, rather than
     inside each adapter, is what makes PDF support work uniformly across
-    all three VisionProvider backends without touching any of them -
-    Ollama's local vision models in particular have no PDF understanding
-    at all, so by the time any adapter sees these bytes, it's always a
-    plain PNG image exactly like a photo upload.
+    every VisionProvider backend without touching any of them - by the
+    time any adapter sees these bytes, it's always a plain PNG image
+    exactly like a photo upload.
     """
     document = None
     page = None
@@ -201,13 +199,11 @@ class _BillExtractionResult(BaseModel):
     bad images without any adapter needing to know about the others.
 
     `category` is typed as a plain `str | None`, not `Literal[*ALLOWED_
-    CATEGORIES] | None`, even though only ten values are ever valid -
-    see VisionSanitizerService.extract_bill_fields for why: a Literal
-    would make Ollama (no server-side schema enforcement, unlike
-    Anthropic/Gemini) hard-fail the *entire* extraction over a bad
-    category guess. Validating here instead of via the type system keeps
-    a categorization miss a soft failure (category=None) uniformly
-    across all three providers, rather than a hard one on just one of them.
+    CATEGORIES] | None`, even though only ten values are ever valid: a
+    Literal would hard-fail the *entire* extraction over one bad category
+    guess. VisionSanitizerService.extract_bill_fields validates it
+    instead, so a categorization miss is a soft failure (category=None)
+    and the bill still saves.
     """
 
     document_type: Literal["bill", "not_a_bill", "illegible"]
@@ -237,9 +233,8 @@ class AnthropicVisionProvider(VisionProvider):
     Privacy note: this calls Anthropic's standard hosted API. The "no PII
     saved" claim in this project's design is about SafeBill's own
     infrastructure - it does NOT by itself cover the provider's data
-    handling. For a real zero-retention claim, either negotiate a
-    zero-data-retention (ZDR) agreement, or run with VISION_PROVIDER=ollama
-    so the image never leaves this host at all.
+    handling. For a real zero-retention claim, negotiate a
+    zero-data-retention (ZDR) agreement with the provider.
     """
 
     _MODEL = "claude-sonnet-5"
@@ -291,61 +286,6 @@ class AnthropicVisionProvider(VisionProvider):
             del base64_data
 
         return response.parsed_output
-
-
-class OllamaVisionProvider(VisionProvider):
-    """
-    Local adapter - the strongest privacy story available: the image never
-    leaves this host. Trades the hosted providers' server-side schema
-    guarantee for a self-hosted model plus a validate-then-reject step,
-    since Ollama's `format="json"` only guarantees syntactically valid
-    JSON, not that it matches our schema.
-    """
-
-    def __init__(self, base_url: str, model: str) -> None:
-        self._model = model
-        self._client = httpx.AsyncClient(
-            base_url=base_url.rstrip("/"), timeout=httpx.Timeout(60.0, connect=5.0)
-        )
-
-    async def extract_bill(self, image_bytes: bytes) -> _BillExtractionResult:
-        base64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
-        del image_bytes
-
-        try:
-            try:
-                http_response = await self._client.post(
-                    "/api/generate",
-                    json={
-                        "model": self._model,
-                        "prompt": (
-                            f"{_SYSTEM_PROMPT}\n\n"
-                            "Respond with a single JSON object matching exactly this schema "
-                            f"and no other text: {json.dumps(_BillExtractionResult.model_json_schema())}"
-                        ),
-                        "images": [base64_data],
-                        "format": "json",
-                        "stream": False,
-                    },
-                )
-            except httpx.RequestError as exc:
-                raise VisionProviderError(f"Could not reach Ollama at {self._client.base_url}") from exc
-
-            if http_response.status_code != 200:
-                raise VisionProviderError(
-                    f"Ollama returned HTTP {http_response.status_code}: {http_response.text[:200]}"
-                )
-
-            try:
-                raw_text = http_response.json()["response"]
-                payload = json.loads(raw_text)
-                return _BillExtractionResult.model_validate(payload)
-            except (KeyError, json.JSONDecodeError, ValidationError) as exc:
-                raise BillValidationError(
-                    "Local vision model did not return a parseable bill extraction"
-                ) from exc
-        finally:
-            del base64_data
 
 
 class GeminiVisionProvider(VisionProvider):
@@ -486,8 +426,6 @@ def get_vision_provider() -> VisionProvider:
     """Reads VISION_PROVIDER (via Settings) and returns the matching
     adapter. This is the only place that needs to know all adapters
     exist - swapping providers is a config change, not a code change."""
-    if settings.vision_provider == "ollama":
-        return OllamaVisionProvider(base_url=settings.ollama_base_url, model=settings.ollama_model)
     if settings.vision_provider == "gemini":
         return GeminiVisionProvider(model=settings.gemini_model)
     return AnthropicVisionProvider()
