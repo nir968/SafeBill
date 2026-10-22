@@ -11,6 +11,10 @@ import anthropic
 import pypdfium2 as pdfium
 from google import genai
 from google.genai import errors as genai_errors
+# The Interactions client raises its own exception hierarchy, separate from
+# genai_errors - safe to import from this private module only because
+# google-genai is pinned exactly in requirements.txt.
+from google.genai._interactions import RateLimitError as GeminiRateLimitError
 from pydantic import BaseModel, ValidationError
 from app.config import settings
 
@@ -31,6 +35,10 @@ class BillValidationError(VisionExtractionError):
 
 class VisionProviderError(VisionExtractionError):
     """The vision provider call itself failed (network, auth, rate limit, server error)."""
+
+
+class VisionProviderOverloadedError(VisionProviderError):
+    """The provider is rate-limiting us (HTTP 429) - temporary; retry in a minute."""
 
 
 _IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
@@ -353,7 +361,11 @@ class GeminiVisionProvider(VisionProvider):
                     "schema": _BillExtractionResult.model_json_schema(),
                 },
             )
+        except GeminiRateLimitError as exc:
+            raise VisionProviderOverloadedError("Gemini is rate-limiting requests (429)") from exc
         except genai_errors.ClientError as exc:
+            if exc.code == 429:
+                raise VisionProviderOverloadedError("Gemini is rate-limiting requests (429)") from exc
             raise VisionProviderError(f"Gemini rejected the request: {exc}") from exc
         except genai_errors.ServerError as exc:
             raise VisionProviderError(f"Gemini server error: {exc}") from exc

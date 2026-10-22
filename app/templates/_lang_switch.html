@@ -1,0 +1,16 @@
+{# EN/HE switcher for the landing and auth pages (behavior: static/js/lang.js).
+   Pinned to the top "end" corner - top-left on Hebrew pages, top-right on English.
+   Pages that include it reserve 5rem of top padding so tall content never slides under it. #}
+<div class="absolute inset-x-0 top-0 z-20 flex justify-end px-4 sm:px-6" style="padding-top: max(1rem, env(safe-area-inset-top))">
+    <div dir="ltr" role="group" aria-label="{{ t('language_switch') }}" class="inline-flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-white/[0.04] p-1 text-xs font-medium backdrop-blur">
+        {% for code, label in [("en", "EN"), ("he", "עב")] %}
+        <button
+            type="button"
+            data-set-lang="{{ code }}"
+            lang="{{ code }}"
+            aria-pressed="{{ 'true' if lang == code else 'false' }}"
+            class="rounded-full px-3 py-1.5 transition {{ 'bg-white/10 text-white shadow-sm' if lang == code else 'text-slate-400 hover:text-white' }}"
+        >{{ label }}</button>
+        {% endfor %}
+    </div>
+</div>

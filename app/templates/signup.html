@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html dir="{{ dir }}" lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>הרשמה - SafeBill</title>
+    <title>{{ t('signup_page_title') }} - SafeBill</title>
 
     <!-- Open Graph - see login.html's own comment on this block, same
          reasoning applies verbatim here. -->
@@ -32,6 +32,9 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Cross-fade between the landing and auth pages where the browser
+         supports cross-document view transitions; elsewhere a normal load. -->
+    <style>@view-transition { navigation: auto; }</style>
 </head>
 <!-- No Alpine.js here, same reasoning as login.html - one form plus a
      live password checklist is still bounded, straightforward DOM
@@ -44,61 +47,50 @@
      label/heading/container slips through. Error and success messages
      are opted back into select-text below since those are the one thing
      on this page worth letting someone select. -->
-<body class="min-h-screen flex items-center justify-center px-4 py-10 select-none">
-    <div class="w-full max-w-sm">
-        <div class="flex flex-col items-center gap-3 mb-6">
-            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center">
-                <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
-                    <path d="m9 12 2 2 4-4" />
-                </svg>
-            </div>
-            <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
-        </div>
+<body class="min-h-screen flex items-center justify-center px-4 pb-12 pt-[calc(5rem_+_env(safe-area-inset-top,0px))] select-none">
+    <!-- Soft brand-colored glow behind the logo - decorative only. -->
+    <div aria-hidden="true" class="pointer-events-none fixed inset-0 overflow-hidden">
+        <div class="absolute left-1/2 -top-40 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-purple-600/20 blur-3xl"></div>
+    </div>
 
-        <!-- Static value-proposition panel, not an interactive modal like
-             the dashboard's onboarding tutorial - a signup page is a
-             conversion-critical moment someone's already committed to
-             ("I clicked sign up"), so this stays out of the way as
-             always-visible context instead of blocking the form with a
-             multi-step walkthrough. Same icons as the real in-app
-             onboarding (📤/🤖 - see the onboarding_step1/2 keys in
-             dashboard.js) on purpose, so what's promised here visibly
-             matches what a new user actually sees right after. -->
-        <div class="glass-card rounded-2xl p-5 mb-4 space-y-3">
-            <h2 class="text-sm font-semibold text-slate-200 text-center">מה מקבלים עם SafeBill?</h2>
-            <div class="space-y-2.5">
-                <div class="flex items-start gap-2.5">
-                    <span class="text-lg leading-none">📤</span>
-                    <p class="text-xs text-slate-400">העלאת חשבון בתמונה או PDF - בלי הקלדה ידנית</p>
-                </div>
-                <div class="flex items-start gap-2.5">
-                    <span class="text-lg leading-none">🤖</span>
-                    <p class="text-xs text-slate-400">בינה מלאכותית מזהה את הפרטים אוטומטית</p>
-                </div>
-                <div class="flex items-start gap-2.5">
-                    <span class="text-lg leading-none">💰</span>
-                    <p class="text-xs text-slate-400">כל החשבונות שלכם במקום אחד, בלי לפספס תשלום</p>
-                </div>
-            </div>
-        </div>
+    {% include "_lang_switch.html" %}
 
-        <div class="glass-strong rounded-2xl shadow-2xl p-6 space-y-4">
-            <h2 class="text-lg font-semibold text-slate-100 text-center">הרשמה</h2>
+    <main class="relative w-full max-w-md">
+        <header class="flex flex-col items-center text-center mb-10 sm:mb-12">
+            <!-- Brand lockup. dir="ltr" keeps the icon left of the Latin
+                 wordmark - in this RTL page a plain flex row would put the
+                 first item (the icon) on the right. -->
+            <a href="/" dir="ltr" aria-label="{{ t('home_link') }}" class="flex items-center gap-3 sm:gap-4 mb-10 sm:mb-12 rounded-2xl">
+                <div class="relative shrink-0" aria-hidden="true">
+                    <div class="absolute -inset-3 rounded-3xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-40 blur-2xl"></div>
+                    <div class="relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-inset ring-white/25 shadow-lg shadow-purple-500/30 flex items-center justify-center">
+                        <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
+                            <path d="m9 12 2 2 4-4" />
+                        </svg>
+                    </div>
+                </div>
+                <span class="text-4xl sm:text-5xl font-medium tracking-tight leading-none pb-1 bg-gradient-to-r from-indigo-300 via-purple-400 to-pink-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(168,85,247,0.35)]">SafeBill</span>
+            </a>
+            <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight text-white">{{ t('signup_heading') }}</h1>
+            <p class="mt-2 text-sm text-slate-400">{{ t('signup_subtitle') }}</p>
+        </header>
 
-            <form id="signup-form" class="space-y-4">
+        <div class="rounded-3xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl shadow-2xl shadow-black/40 p-6 sm:p-8">
+            <form id="signup-form" class="space-y-5">
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">אימייל</label>
+                    <label for="email" class="block text-sm font-medium text-slate-300 mb-2">{{ t('email_label') }}</label>
                     <input
                         id="email"
                         type="email"
                         required
                         autocomplete="email"
-                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="name@example.com"
+                        class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15"
                     >
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">סיסמה</label>
+                    <label for="password" class="block text-sm font-medium text-slate-300 mb-2">{{ t('password_label') }}</label>
                     <div class="relative">
                         <input
                             id="password"
@@ -106,13 +98,13 @@
                             required
                             minlength="8"
                             autocomplete="new-password"
-                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 pe-11 text-sm text-slate-100 placeholder:text-slate-500 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15"
                         >
                         <button
                             type="button"
                             id="password-toggle"
-                            aria-label="הצג סיסמה"
-                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                            aria-label="{{ t('show_password') }}"
+                            class="absolute inset-y-0 end-0 flex items-center px-3.5 text-slate-500 hover:text-slate-300 transition"
                         ></button>
                     </div>
                     <!-- Live checklist, not a single "password too weak"
@@ -122,62 +114,84 @@
                          in app/routers/auth.py) so nothing here can drift
                          out of sync with what the server will actually
                          accept. -->
-                    <ul id="password-requirements" class="mt-2 space-y-1 text-xs">
+                    <ul id="password-requirements" class="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                         <li data-req="length" class="flex items-center gap-1.5 text-slate-500">
-                            <span class="req-icon w-3 inline-block">○</span>לפחות 8 תווים
+                            <span class="req-icon w-3 inline-block">○</span>{{ t('req_length') }}
                         </li>
                         <li data-req="uppercase" class="flex items-center gap-1.5 text-slate-500">
-                            <span class="req-icon w-3 inline-block">○</span>אות גדולה (A-Z)
+                            <span class="req-icon w-3 inline-block">○</span>{{ t('req_uppercase') }}
                         </li>
                         <li data-req="lowercase" class="flex items-center gap-1.5 text-slate-500">
-                            <span class="req-icon w-3 inline-block">○</span>אות קטנה (a-z)
+                            <span class="req-icon w-3 inline-block">○</span>{{ t('req_lowercase') }}
                         </li>
                         <li data-req="number" class="flex items-center gap-1.5 text-slate-500">
-                            <span class="req-icon w-3 inline-block">○</span>ספרה (0-9)
+                            <span class="req-icon w-3 inline-block">○</span>{{ t('req_number') }}
                         </li>
                         <li data-req="special" class="flex items-center gap-1.5 text-slate-500">
-                            <span class="req-icon w-3 inline-block">○</span>תו מיוחד (!@#$% וכו')
+                            <span class="req-icon w-3 inline-block">○</span>{{ t('req_special') }}
                         </li>
                     </ul>
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">אימות סיסמה</label>
+                    <label for="password-confirm" class="block text-sm font-medium text-slate-300 mb-2">{{ t('confirm_password_label') }}</label>
                     <div class="relative">
                         <input
                             id="password-confirm"
                             type="password"
                             required
                             autocomplete="new-password"
-                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 pe-11 text-sm text-slate-100 placeholder:text-slate-500 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15"
                         >
                         <button
                             type="button"
                             id="password-confirm-toggle"
-                            aria-label="הצג סיסמה"
-                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                            aria-label="{{ t('show_password') }}"
+                            class="absolute inset-y-0 end-0 flex items-center px-3.5 text-slate-500 hover:text-slate-300 transition"
                         ></button>
                     </div>
                 </div>
 
-                <p id="error-message" class="text-rose-300 text-sm hidden select-text"></p>
-                <p id="success-message" class="text-emerald-300 text-sm hidden select-text"></p>
+                <p id="error-message" class="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-300 hidden select-text"></p>
+                <p id="success-message" class="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2.5 text-sm text-emerald-300 hidden select-text"></p>
 
                 <button
                     type="submit"
                     id="submit-button"
-                    class="w-full rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium py-2.5 shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                    class="w-full rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:brightness-110 hover:shadow-purple-500/40 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                 >
-                    הרשמה
+                    {{ t('signup_submit') }}
                 </button>
             </form>
-
-            <p class="text-center text-sm text-slate-400">
-                כבר יש לך חשבון?
-                <a href="/login" class="text-indigo-300 hover:text-indigo-200">התחברות</a>
-            </p>
         </div>
-    </div>
 
+        <p class="mt-6 text-center text-sm text-slate-400">
+            {{ t('have_account') }}
+            <a href="/login" class="font-medium text-indigo-300 hover:text-indigo-200 transition">{{ t('login_link') }}</a>
+        </p>
+
+        <!-- Value proposition, kept below the form as quiet context rather
+             than a box competing with it. Same icons as the in-app
+             onboarding (📤/🤖 - see the onboarding_step1/2 keys in
+             dashboard.js), so what's promised here matches what a new
+             user sees right after signing up. -->
+        <ul class="mt-8 space-y-2.5 border-t border-white/[0.06] pt-6 text-sm text-slate-400">
+            <li class="flex items-center gap-3">
+                <span class="text-base leading-none" aria-hidden="true">📤</span>
+                {{ t('benefit_upload') }}
+            </li>
+            <li class="flex items-center gap-3">
+                <span class="text-base leading-none" aria-hidden="true">🤖</span>
+                {{ t('benefit_ai') }}
+            </li>
+            <li class="flex items-center gap-3">
+                <span class="text-base leading-none" aria-hidden="true">💰</span>
+                {{ t('benefit_all_in_one') }}
+            </li>
+        </ul>
+    </main>
+
+    <script>window.SAFEBILL_I18N = {{ text|tojson }};</script>
+    <script src="/static/js/lang.js"></script>
     <script src="/static/js/auth.js"></script>
     <script>
         const form = document.getElementById('signup-form');
@@ -231,16 +245,16 @@
             const passwordConfirm = document.getElementById('password-confirm').value;
 
             if (!updatePasswordChecklist()) {
-                showError('הסיסמה אינה עומדת בדרישות המפורטות למעלה.');
+                showError(T.password_requirements_unmet);
                 return;
             }
             if (password !== passwordConfirm) {
-                showError('הסיסמאות אינן תואמות.');
+                showError(T.passwords_mismatch);
                 return;
             }
 
             submitButton.disabled = true;
-            submitButton.textContent = 'נרשם...';
+            submitButton.textContent = T.signup_submitting;
 
             try {
                 const response = await fetch('/auth/signup', {
@@ -254,9 +268,9 @@
 
                 if (!response.ok) {
                     const data = await response.json().catch(() => null);
-                    showError(extractErrorMessage(data, 'ההרשמה נכשלה.'));
+                    showError(localizedError(response, data, T.signup_failed, { 409: T.err_email_taken }));
                     submitButton.disabled = false;
-                    submitButton.textContent = 'הרשמה';
+                    submitButton.textContent = T.signup_submit;
                     return;
                 }
 
@@ -267,16 +281,16 @@
                 // deliberately left disabled through this delay (no
                 // re-enable here, unlike the error branch above) since a
                 // second click has nothing useful left to do.
-                submitButton.textContent = 'הרשמה';
-                successMessage.textContent = 'נרשמת בהצלחה! מתחבר למערכת...';
+                submitButton.textContent = T.signup_submit;
+                successMessage.textContent = T.signup_success;
                 successMessage.classList.remove('hidden');
                 window.setTimeout(() => {
                     window.location.href = '/dashboard';
                 }, 1200);
             } catch (networkError) {
-                showError('לא הצלחתי להתחבר לשרת.');
+                showError(T.network_error);
                 submitButton.disabled = false;
-                submitButton.textContent = 'הרשמה';
+                submitButton.textContent = T.signup_submit;
             }
         });
     </script>

@@ -45,7 +45,10 @@ document.addEventListener('alpine:init', () => {
     // identically from both: $store.app.t(...) in HTML, and
     // Alpine.store('app').t(...) from anywhere in JS.
     Alpine.store('app', {
-        lang: 'he',
+        // The server renders <html lang> from the safebill_lang cookie
+        // (app/i18n.py), so a language picked on the landing/auth pages
+        // carries straight into the dashboard.
+        lang: document.documentElement.lang === 'en' ? 'en' : 'he',
 
         translations: {
             he: {
@@ -97,6 +100,14 @@ document.addEventListener('alpine:init', () => {
                 error_duplicate_bill: 'החשבון כבר קיים במערכת.',
                 error_not_a_bill: 'לא הצלחתי לזהות את זה כחשבון תקין.',
                 error_scan_unavailable: 'לא ניתן להעלות חשבון כעת, אפשר להוסיף את החשבון באופן ידני.',
+                error_ai_overloaded: 'שירות ה-AI עמוס כרגע. נסו שוב בעוד דקה או הוסיפו את החשבון ידנית.',
+                error_export_failed: 'הייצוא נכשל, נסו שוב.',
+                twofa_title: 'אימות דו-שלבי',
+                twofa_body: 'שלחנו קוד בן 6 ספרות לטלגרם שלכם. הזינו אותו כדי להמשיך.',
+                twofa_verify: 'אימות',
+                twofa_resend: 'שליחת קוד חדש',
+                twofa_send_failed: 'לא הצלחנו לשלוח קוד, נסו שוב.',
+                twofa_verify_failed: 'האימות נכשל.',
                 error_generic_save: 'הייתה בעיה בשמירת החשבון.',
                 error_network: 'לא הצלחתי להתחבר לשרת.',
 
@@ -237,6 +248,14 @@ document.addEventListener('alpine:init', () => {
                 error_duplicate_bill: 'This bill already exists in the system.',
                 error_not_a_bill: "Couldn't recognize this as a valid bill.",
                 error_scan_unavailable: 'Cannot upload a bill right now - you can add the bill manually.',
+                error_ai_overloaded: 'AI is currently experiencing high load. Please try again in a minute or use manual entry.',
+                error_export_failed: 'Export failed, please try again.',
+                twofa_title: 'Two-factor verification',
+                twofa_body: 'We sent a 6-digit code to your Telegram. Enter it to continue.',
+                twofa_verify: 'Verify',
+                twofa_resend: 'Send a new code',
+                twofa_send_failed: "Couldn't send a code, please try again.",
+                twofa_verify_failed: 'Verification failed.',
                 error_generic_save: 'There was a problem saving the bill.',
                 error_network: "Couldn't connect to the server.",
 
@@ -328,10 +347,17 @@ document.addEventListener('alpine:init', () => {
             return this.translations[this.lang][key] || key;
         },
 
+        init() {
+            document.title = this.t('page_title');
+        },
+
         toggleLang() {
             this.lang = this.lang === 'he' ? 'en' : 'he';
             document.documentElement.lang = this.lang;
             document.title = this.t('page_title');
+            // Same cookie the landing/auth pages' switcher writes (static/js/lang.js).
+            const secure = window.location.protocol === 'https:' ? '; secure' : '';
+            document.cookie = `safebill_lang=${this.lang}; path=/; max-age=31536000; samesite=lax${secure}`;
         },
     });
 
@@ -454,6 +480,15 @@ document.addEventListener('alpine:init', () => {
                 // keep their own specific messages instead.
                 if (response.status === 502 || response.status === 504) {
                     this.errorMessage = t('error_scan_unavailable');
+                    this.scanUnavailable = true;
+                    return;
+                }
+
+                // 503 = Gemini itself is rate-limited (see upload_bill in
+                // app/routers/sanitizer.py) - nothing was saved, so point
+                // the user at retrying or the manual-entry button.
+                if (response.status === 503) {
+                    this.errorMessage = t('error_ai_overloaded');
                     this.scanUnavailable = true;
                     return;
                 }
@@ -718,6 +753,17 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    /* ================================================================
+       CHAT WIDGET - TEMPORARILY HIDDEN
+       The chat button + panel markup is hidden in
+       app/templates/dashboard.html (search for the same heading there).
+       To restore: delete this opening note and the matching
+       "END CHAT WIDGET" line after the component, then restore the
+       template block. The chat_* translation strings, the .chat-scroll
+       CSS, and the backend POST /api/chat route were all left in place
+       (the Telegram bot still uses that route), so nothing else needs
+       to change.
+       ================================================================
     Alpine.data('chatWidget', () => ({
         open: false,
         sending: false,
@@ -862,6 +908,7 @@ document.addEventListener('alpine:init', () => {
             }
         },
     }));
+    END CHAT WIDGET (temporarily hidden) */
 
     Alpine.data('aboutModal', () => ({
         open: false,
@@ -874,6 +921,126 @@ document.addEventListener('alpine:init', () => {
     // dismissing one could silently affect the other for no reason.
     Alpine.data('termsModal', () => ({
         open: false,
+    }));
+
+    // Telegram 2FA prompt for sensitive actions (see app/two_factor.py).
+    // prompt() opens the code modal, sends a code, and resolves true once
+    // verified or false if the user cancels. A verified code covers
+    // sensitive actions for 10 minutes server-side.
+    Alpine.store('twoFactor', {
+        open: false,
+        code: '',
+        busy: false,
+        error: null,
+        notice: null,
+        _resolve: null,
+
+        prompt() {
+            this.code = '';
+            this.error = null;
+            this.notice = null;
+            this.open = true;
+            this.resend();
+            return new Promise((resolve) => { this._resolve = resolve; });
+        },
+
+        async _post(url, extra) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ purpose: 'action', ...extra }),
+            });
+            const data = await response.json().catch(() => null);
+            const detail = data && typeof data.detail === 'string' ? data.detail : null;
+            return { ok: response.ok, detail };
+        },
+
+        async resend() {
+            this.error = null;
+            this.notice = null;
+            try {
+                const { ok, detail } = await this._post('/auth/2fa/generate', {});
+                if (ok) this.notice = t('twofa_body');
+                else this.error = detail || t('twofa_send_failed');
+            } catch (networkError) {
+                this.error = t('error_network');
+            }
+        },
+
+        async verify() {
+            if (this.busy || !this.code.trim()) return;
+            this.busy = true;
+            this.error = null;
+            try {
+                const { ok, detail } = await this._post('/auth/2fa/verify', { code: this.code.trim() });
+                if (ok) {
+                    this._finish(true);
+                    return;
+                }
+                this.error = detail || t('twofa_verify_failed');
+            } catch (networkError) {
+                this.error = t('error_network');
+            } finally {
+                this.busy = false;
+            }
+        },
+
+        cancel() {
+            this._finish(false);
+        },
+
+        _finish(verified) {
+            this.open = false;
+            const resolve = this._resolve;
+            this._resolve = null;
+            if (resolve) resolve(verified);
+        },
+    });
+
+    // CSV export as fetch + blob download rather than a plain link, so a
+    // "2FA required" answer can open the code prompt instead of showing
+    // raw JSON. The file and filename are exactly what GET /bills/export sends.
+    Alpine.data('csvExport', () => ({
+        exporting: false,
+
+        async _needsTwoFactor(response) {
+            if (response.status !== 403) return false;
+            const data = await response.json().catch(() => null);
+            return Boolean(data && data.detail && data.detail.code === 'two_factor_required');
+        },
+
+        async download() {
+            if (this.exporting) return;
+            this.exporting = true;
+            try {
+                let response = await fetch('/bills/export');
+                if (await this._needsTwoFactor(response)) {
+                    const verified = await Alpine.store('twoFactor').prompt();
+                    if (!verified) return;
+                    response = await fetch('/bills/export');
+                }
+                if (!response.ok) {
+                    alert(t('error_export_failed'));
+                    return;
+                }
+
+                const blob = await response.blob();
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const match = /filename=([^;]+)/.exec(disposition);
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = match ? match[1].trim() : 'safebill_export.csv';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (networkError) {
+                alert(t('error_network'));
+            } finally {
+                this.exporting = false;
+            }
+        },
     }));
 
     Alpine.data('telegramLink', () => ({
@@ -908,14 +1075,14 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('logoutButton', () => ({
         async logout() {
             // Best-effort - even if this fails (network hiccup, already
-            // logged out elsewhere), redirecting to /login is still the
-            // right outcome, so there's no error branch to show the user.
+            // logged out elsewhere), going back to the landing page is still
+            // the right outcome, so there's no error branch to show the user.
             try {
                 await fetch('/auth/logout', { method: 'POST' });
             } catch (networkError) {
                 // ignored - see comment above
             }
-            window.location.href = '/login';
+            window.location.href = '/';
         },
     }));
 

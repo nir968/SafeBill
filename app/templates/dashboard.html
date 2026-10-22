@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html dir="rtl" lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -55,7 +55,7 @@
                  its own content size, which on a narrow phone is exactly
                  what pushes the action buttons off-screen. -->
             <div class="min-w-0">
-                <h1 class="text-lg sm:text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent truncate">SafeBill</h1>
+                <h1 class="text-lg sm:text-xl font-medium bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent truncate">SafeBill</h1>
                 <p class="text-sm text-slate-400 truncate" x-text="$store.app.t('dashboard_subtitle')"></p>
             </div>
 
@@ -601,20 +601,22 @@
         <section class="animate-fade-in-up">
             <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
                 <h2 class="text-lg font-semibold text-slate-100" x-text="$store.app.t('regular_bills_title')"></h2>
-                <!-- Plain navigation (not a fetch()/@click handler) -
-                     GET /bills/export sets its own Content-Disposition:
-                     attachment header (see app/main.py), so the browser
-                     downloads the file on its own; no JS needed to
-                     trigger it. -->
-                <a
-                    href="/bills/export"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-white/10 text-sm text-slate-300 hover:text-white hover:border-white/20 transition"
+                <!-- A button, not a plain link: Telegram-linked accounts
+                     may need a 2FA code first (see csvExport() in
+                     dashboard.js), which a direct navigation can't prompt for. -->
+                <button
+                    type="button"
+                    x-data="csvExport()"
+                    @click="download()"
+                    :disabled="exporting"
+                    :aria-busy="exporting"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-white/10 text-sm text-slate-300 hover:text-white hover:border-white/20 disabled:opacity-50 transition"
                 >
                     <span x-text="$store.app.t('export_csv_button')"></span>
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
                     </svg>
-                </a>
+                </button>
             </div>
             {{ bill_table(regular_bills, '🧾', 'no_bills_saved') }}
         </section>
@@ -875,6 +877,74 @@
         </div>
     </div>
 
+    <!-- Telegram 2FA code prompt for sensitive actions - opened only by
+         $store.twoFactor.prompt() (see dashboard.js), e.g. from csvExport(). -->
+    <div x-data>
+        <div
+            x-show="$store.twoFactor.open"
+            x-cloak
+            x-transition.opacity
+            @keydown.escape.window="$store.twoFactor.open && $store.twoFactor.cancel()"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            :aria-label="$store.app.t('twofa_title')"
+        >
+            <div class="absolute inset-0 bg-black/60" @click="$store.twoFactor.cancel()"></div>
+
+            <form
+                @submit.prevent="$store.twoFactor.verify()"
+                class="relative glass-strong rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4"
+            >
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-slate-100" x-text="$store.app.t('twofa_title')"></h3>
+                    <button type="button" @click="$store.twoFactor.cancel()" :aria-label="$store.app.t('close')" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+                </div>
+
+                <p x-show="$store.twoFactor.notice" class="text-sm text-slate-300" x-text="$store.twoFactor.notice"></p>
+
+                <input
+                    x-model="$store.twoFactor.code"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    dir="ltr"
+                    class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-400 select-text"
+                >
+
+                <p x-show="$store.twoFactor.error" class="text-rose-300 text-sm select-text" x-text="$store.twoFactor.error"></p>
+
+                <button
+                    type="submit"
+                    :disabled="$store.twoFactor.busy"
+                    class="w-full rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium py-2.5 shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                    x-text="$store.app.t('twofa_verify')"
+                ></button>
+                <button
+                    type="button"
+                    @click="$store.twoFactor.resend()"
+                    class="w-full text-xs text-indigo-300 hover:text-indigo-200"
+                    x-text="$store.app.t('twofa_resend')"
+                ></button>
+            </form>
+        </div>
+    </div>
+
+    {# ================================================================
+       CHAT WIDGET - TEMPORARILY HIDDEN
+       To restore: delete this whole note (from the opening brace-hash
+       above down to the "=====" line below), and the single closing
+       "END CHAT WIDGET" line after the widget's last </div>. Then
+       un-comment the chatWidget component in app/static/js/dashboard.js
+       (search for "CHAT WIDGET - TEMPORARILY HIDDEN" there too).
+       Never type a hash followed by a closing brace inside this note -
+       that pair ends the Jinja comment early.
+       A Jinja comment, not an HTML one: the block contains its own
+       HTML comment, and HTML comments can't nest - its "-->" would end
+       an outer HTML comment early and leak the rest as broken markup.
+       Jinja strips this whole block server-side instead.
+       ================================================================
+
     <!-- Chat widget: floating bubble + panel, wired to POST /api/chat via
          the chatWidget Alpine component (app/static/js/dashboard.js).
          "Real-time" here means a normal fetch()-based request/response
@@ -957,6 +1027,7 @@
             </form>
         </div>
     </div>
+    END CHAT WIDGET (temporarily hidden) #}
 
     <!-- Third-party UserWay accessibility widget (replaces this app's
          former custom-built accessibility widget). userway_account_id

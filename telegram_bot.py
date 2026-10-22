@@ -289,6 +289,8 @@ def _process_bill_upload(message, file_id: str) -> None:
         bot.reply_to(message, "הקובץ גדול מדי. נסה קובץ או תמונה קטנים יותר.")
     elif response.status_code == 429:
         bot.reply_to(message, "שלחת יותר מדי חשבוניות בדקה האחרונה ⏳ נסה שוב בעוד דקה.")
+    elif response.status_code == 503:
+        bot.reply_to(message, "שירות ה-AI עמוס כרגע 🤖 נסה שוב בעוד דקה, או הוסף את החשבון ידנית באתר.")
     elif response.status_code == 504:
         bot.reply_to(message, "פענוח החשבונית לקח יותר מדי זמן. נסה שוב בעוד רגע.")
     elif response.status_code == 502:

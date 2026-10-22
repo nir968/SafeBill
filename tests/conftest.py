@@ -31,3 +31,7 @@ os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://safebill:safebill@localhost:5432/safebill_test"
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+# Without this, a developer's real .env token leaks into the suite (pydantic-
+# settings reads .env too), making local runs differ from CI and letting any
+# Telegram send reach real chats. Tests that need 2FA on monkeypatch it.
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "mock-token")

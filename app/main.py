@@ -25,6 +25,7 @@ from app.crud import get_or_create_user
 from app.db import Base, engine, get_db
 from app.models import Bill
 from app.routers import auth, sanitizer, web
+from app.two_factor import require_recent_two_factor
 from app.vision import ALLOWED_CATEGORIES
 
 
@@ -406,7 +407,9 @@ async def delete_bill(
     return {"status": "deleted", "id": deleted["id"], "institution": deleted["institution"]}
 
 
-@app.get("/bills/export")
+# Browser sessions of Telegram-linked accounts need a recent 2FA code
+# (see app/two_factor.py); the Telegram bot's own export calls are exempt.
+@app.get("/bills/export", dependencies=[Depends(require_recent_two_factor)])
 async def export_bills(
     user_id: int = Depends(get_authorized_user_id), db: AsyncSession = Depends(get_db)
 ):

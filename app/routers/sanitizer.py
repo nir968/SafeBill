@@ -13,7 +13,7 @@ from app.crud import get_or_create_user
 from app.db import get_db
 from app.models import Bill
 from app.rate_limit import limit_bill_scans
-from app.vision import BillValidationError, vision_client
+from app.vision import BillValidationError, VisionProviderOverloadedError, vision_client
 
 logger = logging.getLogger("safebill.sanitizer")
 
@@ -82,6 +82,21 @@ async def upload_bill(
         # branch below), or every random photo a user uploads by mistake
         # would leave a garbage row in their bill list.
         raise HTTPException(422, str(exc))
+    except VisionProviderOverloadedError:
+        # Gemini is rate-limiting us: a short, temporary condition, so the
+        # user is told to retry or add the bill manually instead of getting
+        # a ₪0 placeholder row. 503, not 429 - this app's own per-user scan
+        # limit (app/rate_limit.py) already uses 429 for "you scanned too often".
+        logger.warning("upload_bill: Gemini rate-limited - returning 503, nothing saved")
+        raise HTTPException(
+            503,
+            detail={
+                "code": "ai_overloaded",
+                "message": "שירות ה-AI עמוס כרגע. נסו שוב בעוד דקה או הוסיפו את החשבון ידנית.",
+                "retry_after_seconds": 60,
+            },
+            headers={"Retry-After": "60"},
+        )
     except Exception as exc:
         # Deliberately broad, not just asyncio.TimeoutError/VisionProviderError:
         # this also has to cover whatever the vision SDK's HTTP/retry

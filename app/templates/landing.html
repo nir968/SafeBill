@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html dir="{{ dir }}" lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{{ t('landing_page_title') }}</title>
+
+    <!-- Open Graph - this root URL is the link people share most, so it
+         carries the same rich-preview tags as login.html (see its comment). -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SafeBill">
+    <meta property="og:locale" content="he_IL">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
+    <meta property="og:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
+    <meta property="og:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SafeBill - ניהול חשבונות חכם עם בינה מלאכותית">
+    <meta name="twitter:description" content="העלו תמונה או PDF של חשבון ותנו לבינה המלאכותית לחלץ את הפרטים, לעקוב אחרי תשלומים ולהתריע על חריגות - הכל במקום אחד.">
+    <meta name="twitter:image" content="{{ request.url_for('static', path='img/og-image.jpg') }}?v={{ icon_version }}">
+
+    <!-- iOS home-screen icon / standalone mode - see login.html's comment. -->
+    <link rel="apple-touch-icon" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='img/apple-touch-icon.png') }}?v={{ icon_version }}">
+    <meta name="apple-mobile-web-app-title" content="SafeBill">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" type="image/png" href="{{ request.url_for('static', path='img/favicon.png') }}">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Cross-fade into the login/signup pages where the browser supports
+         cross-document view transitions; elsewhere a normal load. -->
+    <style>@view-transition { navigation: auto; }</style>
+</head>
+<!-- Entry page of the flow: landing -> login or signup -> dashboard.
+     Already-signed-in visitors never see it (GET / redirects them to
+     /dashboard - see landing_page in app/routers/web.py). -->
+<body class="min-h-screen flex items-center justify-center px-4 pb-16 pt-[calc(5rem_+_env(safe-area-inset-top,0px))] select-none">
+    <!-- Soft brand-colored glow behind the logo - decorative only. -->
+    <div aria-hidden="true" class="pointer-events-none fixed inset-0 overflow-hidden">
+        <div class="absolute left-1/2 -top-40 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-purple-600/20 blur-3xl"></div>
+    </div>
+
+    {% include "_lang_switch.html" %}
+
+    <main class="relative w-full max-w-md text-center">
+        <!-- dir="ltr": icon left of the Latin wordmark, on Hebrew pages too. -->
+        <div dir="ltr" class="flex items-center justify-center gap-4 mb-12 sm:mb-14">
+            <div class="relative shrink-0" aria-hidden="true">
+                <div class="absolute -inset-3 rounded-3xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-40 blur-2xl"></div>
+                <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-inset ring-white/25 shadow-lg shadow-purple-500/30 flex items-center justify-center">
+                    <svg class="w-7 h-7 sm:w-8 sm:h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
+                        <path d="m9 12 2 2 4-4" />
+                    </svg>
+                </div>
+            </div>
+            <h1 class="text-5xl sm:text-6xl font-medium tracking-tight leading-none pb-1 bg-gradient-to-r from-indigo-300 via-purple-400 to-pink-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(168,85,247,0.35)]">SafeBill</h1>
+        </div>
+
+        <h2 class="text-xl sm:text-2xl font-semibold tracking-tight text-white">{{ t('landing_headline') }}</h2>
+        <p class="mt-3 text-sm sm:text-base text-slate-400">{{ t('landing_subtitle') }}</p>
+
+        <div class="mt-12 sm:mt-14 grid gap-3 sm:grid-cols-2">
+            <a
+                href="/login"
+                class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:brightness-110 hover:shadow-purple-500/40 active:scale-[0.99]"
+            >{{ t('landing_login') }}</a>
+            <a
+                href="/signup"
+                class="inline-flex items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.04] py-3.5 text-sm font-semibold text-slate-100 backdrop-blur transition hover:bg-white/[0.08] hover:border-white/20 active:scale-[0.99]"
+            >{{ t('landing_signup') }}</a>
+        </div>
+    </main>
+
+    <script src="/static/js/lang.js"></script>
+</body>
+</html>

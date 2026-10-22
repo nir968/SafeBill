@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html dir="{{ dir }}" lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>התחברות - SafeBill</title>
+    <title>{{ t('login_page_title') }} - SafeBill</title>
 
     <!-- Open Graph - controls the rich preview WhatsApp/Telegram/etc.
          show when this link is shared. og:image needs an absolute URL
@@ -49,6 +49,9 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Cross-fade between the landing and auth pages where the browser
+         supports cross-document view transitions; elsewhere a normal load. -->
+    <style>@view-transition { navigation: auto; }</style>
 </head>
 <!-- No Alpine.js here on purpose - this page is one form with one error
      message to show/hide, nowhere near enough interactivity to justify
@@ -63,72 +66,130 @@
      exactly how a real one - the "סיסמה" label - got through before).
      Explicitly opted back in below for the one thing worth letting
      someone select: the error message itself. -->
-<body class="min-h-screen flex items-center justify-center px-4 select-none">
-    <div class="w-full max-w-sm">
-        <div class="flex flex-col items-center gap-3 mb-6">
-            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center">
-                <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
-                    <path d="m9 12 2 2 4-4" />
-                </svg>
-            </div>
-            <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">SafeBill</h1>
-        </div>
+<body class="min-h-screen flex items-center justify-center px-4 pb-12 pt-[calc(5rem_+_env(safe-area-inset-top,0px))] select-none">
+    <!-- Soft brand-colored glow behind the logo - decorative only. -->
+    <div aria-hidden="true" class="pointer-events-none fixed inset-0 overflow-hidden">
+        <div class="absolute left-1/2 -top-40 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-purple-600/20 blur-3xl"></div>
+    </div>
 
-        <div class="glass-strong rounded-2xl shadow-2xl p-6 space-y-4">
-            <h2 class="text-lg font-semibold text-slate-100 text-center">התחברות</h2>
+    {% include "_lang_switch.html" %}
 
-            <form id="login-form" class="space-y-4">
+    <main class="relative w-full max-w-md">
+        <header class="flex flex-col items-center text-center mb-10 sm:mb-12">
+            <!-- Brand lockup. dir="ltr" keeps the icon left of the Latin
+                 wordmark - in this RTL page a plain flex row would put the
+                 first item (the icon) on the right. -->
+            <a href="/" dir="ltr" aria-label="{{ t('home_link') }}" class="flex items-center gap-3 sm:gap-4 mb-10 sm:mb-12 rounded-2xl">
+                <div class="relative shrink-0" aria-hidden="true">
+                    <div class="absolute -inset-3 rounded-3xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-40 blur-2xl"></div>
+                    <div class="relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-inset ring-white/25 shadow-lg shadow-purple-500/30 flex items-center justify-center">
+                        <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" />
+                            <path d="m9 12 2 2 4-4" />
+                        </svg>
+                    </div>
+                </div>
+                <span class="text-4xl sm:text-5xl font-medium tracking-tight leading-none pb-1 bg-gradient-to-r from-indigo-300 via-purple-400 to-pink-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(168,85,247,0.35)]">SafeBill</span>
+            </a>
+            <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight text-white">{{ t('login_heading') }}</h1>
+            <p class="mt-2 text-sm text-slate-400">{{ t('login_subtitle') }}</p>
+        </header>
+
+        <div class="rounded-3xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl shadow-2xl shadow-black/40 p-6 sm:p-8">
+            <form id="login-form" class="space-y-5">
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">אימייל</label>
+                    <label for="email" class="block text-sm font-medium text-slate-300 mb-2">{{ t('email_label') }}</label>
                     <input
                         id="email"
                         type="email"
                         required
                         autocomplete="email"
-                        class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="name@example.com"
+                        class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15"
                     >
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">סיסמה</label>
+                    <label for="password" class="block text-sm font-medium text-slate-300 mb-2">{{ t('password_label') }}</label>
                     <div class="relative">
                         <input
                             id="password"
                             type="password"
                             required
                             autocomplete="current-password"
-                            class="w-full rounded-lg bg-white/5 border border-white/10 text-slate-100 px-3 py-2 pe-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 pe-11 text-sm text-slate-100 placeholder:text-slate-500 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15"
                         >
                         <button
                             type="button"
                             id="password-toggle"
-                            aria-label="הצג סיסמה"
-                            class="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                            aria-label="{{ t('show_password') }}"
+                            class="absolute inset-y-0 end-0 flex items-center px-3.5 text-slate-500 hover:text-slate-300 transition"
                         ></button>
                     </div>
-                    <p class="mt-1.5 text-end">
-                        <a href="/forgot-password" class="text-xs text-indigo-300 hover:text-indigo-200">שכחת סיסמה?</a>
-                    </p>
                 </div>
 
-                <p id="error-message" class="text-rose-300 text-sm hidden select-text"></p>
+                <p id="error-message" class="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-300 hidden select-text"></p>
 
                 <button
                     type="submit"
                     id="submit-button"
-                    class="w-full rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-sm font-medium py-2.5 shadow-lg shadow-purple-500/30 disabled:opacity-50 transition"
+                    class="w-full rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:brightness-110 hover:shadow-purple-500/40 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                 >
-                    התחברות
+                    {{ t('login_submit') }}
                 </button>
+
+                <!-- Inside the form so it hides with it during the 2FA step. -->
+                <p class="text-center">
+                    <a href="/forgot-password" class="text-sm text-slate-400 hover:text-white transition">{{ t('forgot_link') }}</a>
+                </p>
             </form>
 
-            <p class="text-center text-sm text-slate-400">
-                אין לך חשבון?
-                <a href="/signup" class="text-indigo-300 hover:text-indigo-200">הרשמה</a>
-            </p>
+            <!-- 2FA code step for Telegram-linked accounts - hidden until
+                 POST /auth/login answers two_factor_required (see
+                 startTwoFactorStep in /static/js/auth.js). -->
+            <form id="twofa-form" class="space-y-5 hidden">
+                <div class="flex flex-col items-center text-center gap-3">
+                    <div class="w-11 h-11 rounded-xl bg-sky-500/10 border border-sky-400/20 text-sky-300 flex items-center justify-center" aria-hidden="true">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 2-7 20-4-9-9-4Z" />
+                            <path d="M22 2 11 13" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-semibold text-white">{{ t('twofa_title') }}</h2>
+                        <p class="mt-1 text-sm text-slate-400">{{ t('twofa_login_desc') }}</p>
+                    </div>
+                </div>
+                <input
+                    id="twofa-code"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    required
+                    dir="ltr"
+                    aria-label="{{ t('twofa_code_label') }}"
+                    placeholder="••••••"
+                    class="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-center text-xl font-semibold tracking-[0.6em] text-slate-100 placeholder:text-slate-600 transition focus:outline-none focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/15 select-text"
+                >
+                <p id="twofa-notice" class="text-emerald-300 text-xs text-center hidden"></p>
+                <p id="twofa-error" class="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-300 hidden select-text"></p>
+                <button
+                    type="submit"
+                    id="twofa-submit"
+                    class="w-full rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:brightness-110 hover:shadow-purple-500/40 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                >{{ t('twofa_verify') }}</button>
+                <button type="button" id="twofa-resend" class="w-full text-sm text-slate-400 hover:text-white transition">{{ t('twofa_resend') }}</button>
+            </form>
         </div>
-    </div>
 
+        <p class="mt-6 text-center text-sm text-slate-400">
+            {{ t('new_here') }}
+            <a href="/signup" class="font-medium text-indigo-300 hover:text-indigo-200 transition">{{ t('create_account_link') }}</a>
+        </p>
+    </main>
+
+    <script>window.SAFEBILL_I18N = {{ text|tojson }};</script>
+    <script src="/static/js/lang.js"></script>
     <script src="/static/js/auth.js"></script>
     <script>
         const form = document.getElementById('login-form');
@@ -141,7 +202,7 @@
             event.preventDefault();
             errorMessage.classList.add('hidden');
             submitButton.disabled = true;
-            submitButton.textContent = 'מתחבר...';
+            submitButton.textContent = T.login_submitting;
 
             try {
                 const response = await fetch('/auth/login', {
@@ -155,10 +216,20 @@
 
                 if (!response.ok) {
                     const data = await response.json().catch(() => null);
-                    errorMessage.textContent = extractErrorMessage(data, 'ההתחברות נכשלה.');
+                    errorMessage.textContent = localizedError(response, data, T.login_failed, { 401: T.err_invalid_credentials });
                     errorMessage.classList.remove('hidden');
                     submitButton.disabled = false;
-                    submitButton.textContent = 'התחברות';
+                    submitButton.textContent = T.login_submit;
+                    return;
+                }
+
+                const data = await response.json().catch(() => null);
+                if (data && data.two_factor_required) {
+                    form.classList.add('hidden');
+                    startTwoFactorStep({
+                        purpose: 'login',
+                        onVerified: () => { window.location.href = '/dashboard'; },
+                    });
                     return;
                 }
 
@@ -169,10 +240,10 @@
                 // from a user_id this page has no business constructing.
                 window.location.href = '/dashboard';
             } catch (networkError) {
-                errorMessage.textContent = 'לא הצלחתי להתחבר לשרת.';
+                errorMessage.textContent = T.network_error;
                 errorMessage.classList.remove('hidden');
                 submitButton.disabled = false;
-                submitButton.textContent = 'התחברות';
+                submitButton.textContent = T.login_submit;
             }
         });
     </script>

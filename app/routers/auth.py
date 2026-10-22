@@ -27,6 +27,7 @@ query parameter. Two different stories apply when migrating them:
 import logging
 import re
 import secrets
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -34,7 +35,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import email_client
+from app import email_client, two_factor
 from app.auth import (
     COOKIE_NAME,
     create_access_token,
@@ -186,6 +187,12 @@ async def login(
     ):
         raise HTTPException(401, "אימייל או סיסמה שגויים")
 
+    # Telegram-linked account: no session until the code from POST
+    # /auth/2fa/verify checks out (see app/two_factor.py).
+    if two_factor.is_required(user):
+        await two_factor.start_pending_login(request.app.state.redis, request, response, user.id)
+        return {"two_factor_required": True}
+
     _set_auth_cookie(response, request, user.id)
     return {"id": user.id, "email": user.email}
 
@@ -287,6 +294,28 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+async def _require_reset_two_factor(redis, db: AsyncSession, reset_token: str, user_id: int) -> None:
+    """For a Telegram-linked account, a reset link alone isn't enough: the
+    Telegram code must have been verified for this link first (POST
+    /auth/2fa/verify with purpose="reset"). Raises before the reset token
+    is consumed, so the link still works once the code is entered."""
+    if not two_factor.delivery_configured():
+        return
+    user = await db.get(User, user_id)
+    if user is None or not two_factor.is_required(user):
+        return
+    ok_key = f"2fa:reset_ok:{reset_token}"
+    if await redis.get(ok_key) is None:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "two_factor_required",
+                "message": "נדרש אימות דו-שלבי - הזינו את הקוד שנשלח לטלגרם שלכם",
+            },
+        )
+    await redis.delete(ok_key)
+
+
 @router.post("/reset-password")
 async def reset_password(
     request: Request,
@@ -301,6 +330,7 @@ async def reset_password(
     raw_user_id = await redis.get(key)
     if raw_user_id is None:
         raise HTTPException(400, "קישור איפוס הסיסמה פג תוקף או שאינו תקין - בקשו קישור חדש")
+    await _require_reset_two_factor(redis, db, payload.token, int(raw_user_id))
     # Deleted immediately, before doing anything else - single-use, same
     # reasoning as the Telegram link token below.
     await redis.delete(key)
@@ -432,3 +462,86 @@ async def redeem_telegram_link_token(
     await db.commit()
 
     return TelegramLinkResponse(email=user.email)
+
+
+# --- Two-factor authentication (Telegram code) ----------------------------
+#
+# Core logic and Redis key layout live in app/two_factor.py. These two
+# endpoints only work out *who* the code is for, which depends on purpose:
+#   login  - the pending-login cookie set by POST /auth/login
+#   reset  - the password-reset token from the emailed link
+#   action - the logged-in session (sensitive actions, e.g. CSV export)
+
+
+class TwoFactorRequest(BaseModel):
+    purpose: Literal["login", "reset", "action"]
+    reset_token: str | None = None
+
+
+class TwoFactorVerifyRequest(TwoFactorRequest):
+    code: str
+
+
+async def _resolve_two_factor_user(
+    request: Request, payload: TwoFactorRequest, db: AsyncSession
+) -> User:
+    redis = request.app.state.redis
+    if payload.purpose == "login":
+        pending_token = request.cookies.get(two_factor.PENDING_LOGIN_COOKIE)
+        raw_user_id = await redis.get(f"2fa:pending:{pending_token}") if pending_token else None
+        if raw_user_id is None:
+            raise HTTPException(401, "תוקף ההתחברות פג - התחברו מחדש")
+        user = await db.get(User, int(raw_user_id))
+    elif payload.purpose == "reset":
+        raw_user_id = (
+            await redis.get(f"{_RESET_TOKEN_REDIS_PREFIX}{payload.reset_token}")
+            if payload.reset_token
+            else None
+        )
+        if raw_user_id is None:
+            raise HTTPException(400, "קישור איפוס הסיסמה פג תוקף או שאינו תקין - בקשו קישור חדש")
+        user = await db.get(User, int(raw_user_id))
+    else:
+        user = await get_current_user(request, db)
+
+    if user is None or not two_factor.is_required(user):
+        raise HTTPException(400, "אימות דו-שלבי אינו פעיל לחשבון זה")
+    return user
+
+
+@router.post("/2fa/generate")
+async def generate_two_factor_code(
+    request: Request, payload: TwoFactorRequest, db: AsyncSession = Depends(get_db)
+):
+    user = await _resolve_two_factor_user(request, payload, db)
+    await two_factor.issue_code(request.app.state.redis, user, payload.purpose)
+    return {"sent": True, "expires_in": two_factor.OTP_TTL_SECONDS}
+
+
+@router.post("/2fa/verify")
+async def verify_two_factor_code(
+    request: Request,
+    response: Response,
+    payload: TwoFactorVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _resolve_two_factor_user(request, payload, db)
+    redis = request.app.state.redis
+    await two_factor.verify_code(redis, user.id, payload.purpose, payload.code)
+
+    if payload.purpose == "login":
+        await redis.delete(f"2fa:pending:{request.cookies.get(two_factor.PENDING_LOGIN_COOKIE)}")
+        response.delete_cookie(
+            two_factor.PENDING_LOGIN_COOKIE, path=two_factor.PENDING_LOGIN_COOKIE_PATH
+        )
+        _set_auth_cookie(response, request, user.id)
+        # Just verified - no need to ask again for a sensitive action right after.
+        await two_factor.grant_elevation(redis, user.id)
+    elif payload.purpose == "reset":
+        await redis.set(
+            f"2fa:reset_ok:{payload.reset_token}", "1", ex=two_factor.PENDING_TTL_SECONDS
+        )
+    else:
+        await two_factor.grant_elevation(redis, user.id)
+
+    return {"verified": True}

@@ -20,3 +20,4 @@ SELECT institution, amount, due_date
 FROM bills 
 WHERE due_date < CURRENT_DATE;
 
+

@@ -1,17 +1,23 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import AgentError, ask_agent
-from app.auth import get_authorized_user_id, get_current_user_for_page
+from app.auth import (
+    COOKIE_NAME,
+    decode_access_token,
+    get_authorized_user_id,
+    get_current_user_for_page,
+)
 from app.cache import get_or_set
 from app.config import settings
 from app.db import get_db
+from app.i18n import get_lang, page_context
 from app.models import Bill, User
 from app.vision import TICKET_CATEGORY
 from app.crud import get_total_paid
@@ -60,19 +66,34 @@ def _format_money(amount, currency: str) -> str:
 templates.env.filters["money"] = _format_money
 
 
+@router.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    """Entry page: brand + "sign in" / "create account". A visitor who
+    already has a valid session goes straight to the dashboard (a token
+    check only - GET /dashboard itself still verifies the account)."""
+    token = request.cookies.get(COOKIE_NAME)
+    if token and decode_access_token(token) is not None:
+        return RedirectResponse("/dashboard", status_code=302)
+    return templates.TemplateResponse(
+        request=request, name="landing.html", context=page_context(request)
+    )
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse(request=request, name="login.html", context={})
+    return templates.TemplateResponse(request=request, name="login.html", context=page_context(request))
 
 
 @router.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
-    return templates.TemplateResponse(request=request, name="signup.html", context={})
+    return templates.TemplateResponse(request=request, name="signup.html", context=page_context(request))
 
 
 @router.get("/forgot-password", response_class=HTMLResponse)
 async def forgot_password_page(request: Request):
-    return templates.TemplateResponse(request=request, name="forgot_password.html", context={})
+    return templates.TemplateResponse(
+        request=request, name="forgot_password.html", context=page_context(request)
+    )
 
 
 @router.get("/reset-password", response_class=HTMLResponse)
@@ -81,7 +102,9 @@ async def reset_password_page(request: Request):
     # reset_password.html itself pulls ?token= from the URL via
     # URLSearchParams and sends it with the actual POST /auth/reset-password
     # call, which is where it's actually checked.
-    return templates.TemplateResponse(request=request, name="reset_password.html", context={})
+    return templates.TemplateResponse(
+        request=request, name="reset_password.html", context=page_context(request)
+    )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -190,7 +213,8 @@ async def dashboard(
             "userway_account_id": settings.userway_account_id,
             "telegram_bot_username": settings.telegram_bot_username,
             "telegram_linked": current_user.telegram_chat_id is not None,
-            "total_paid": total_paid
+            "total_paid": total_paid,
+            "lang": get_lang(request),
         },
     )
 
