@@ -44,3 +44,6 @@ docker compose up -d
 ```bash
 docker compose down
 ```
+
+<img width="2541" height="1231" alt="Screenshot_30" src="https://github.com/user-attachments/assets/b4d4ccaa-0e11-43c6-a8a3-6d21f9d43799" />
+<img width="2524" height="1241" alt="Screenshot_28" src="https://github.com/user-attachments/assets/fe851ea3-e553-4128-977d-636e450e5881" />
